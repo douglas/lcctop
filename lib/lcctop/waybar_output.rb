@@ -15,16 +15,6 @@ module Lcctop
       SessionStatus::IDLE               => "IDLE",
     }.freeze
 
-    # Maps session status to waybar CSS class (applied to #custom-lcctop).
-    STATUS_CLASS = {
-      SessionStatus::WAITING_PERMISSION => "permission",
-      SessionStatus::WAITING_INPUT      => "attention",
-      SessionStatus::NEEDS_ATTENTION    => "attention",
-      SessionStatus::WORKING            => "working",
-      SessionStatus::COMPACTING         => "compacting",
-      SessionStatus::IDLE               => "idle",
-    }.freeze
-
     # Build Waybar JSON from the current sessions directory.
     # Returns a Hash ready for JSON.generate.
     def self.render
@@ -46,12 +36,12 @@ module Lcctop
     # Build the Waybar JSON hash from a pre-sorted list of display-adjusted sessions.
     def self.build(sessions)
       if sessions.empty?
-        { "text" => "", "tooltip" => "", "class" => "" }
+        { "text" => ICON, "tooltip" => "", "class" => "disconnected" }
       else
         {
           "text"    => format_text(sessions),
           "tooltip" => format_tooltip(sessions),
-          "class"   => STATUS_CLASS.fetch(sessions.first.status, "idle"),
+          "class"   => "connected",
         }
       end
     end

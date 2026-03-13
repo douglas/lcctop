@@ -25,17 +25,32 @@ end
 
 desc "Install Omarchy theme template and generate current CSS"
 task :install_theme do
-  themed_dir = File.expand_path("~/.config/omarchy/themed")
-  tpl_src    = File.expand_path("themed/lcctop-waybar.css.tpl", __dir__)
-  tpl_dest   = File.join(themed_dir, "lcctop-waybar.css.tpl")
+  themed_dir  = File.expand_path("~/.config/omarchy/themed")
+  tpl_src     = File.expand_path("themed/lcctop-waybar.css.tpl", __dir__)
+  tpl_dest    = File.join(themed_dir, "lcctop-waybar.css.tpl")
+  colors_file = File.expand_path("~/.config/omarchy/current/theme/colors.toml")
+  css_out     = File.expand_path("~/.config/omarchy/current/theme/lcctop-waybar.css")
+
   FileUtils.mkdir_p(themed_dir)
   FileUtils.cp(tpl_src, tpl_dest)
   puts "Installed #{tpl_dest}"
-  if system("which omarchy-theme-set-templates > /dev/null 2>&1")
-    system("omarchy-theme-set-templates")
-    puts "Generated current theme CSS"
+
+  # Generate CSS for the current theme directly from colors.toml.
+  # omarchy-theme-set-templates only runs during theme switches (uses next-theme/);
+  # we replicate its sed substitution here for the already-active theme.
+  if File.exist?(colors_file)
+    vars = {}
+    File.readlines(colors_file).each do |line|
+      m = line.match(/\A\s*(\w+)\s*=\s*"([^"]+)"/)
+      vars[m[1]] = m[2] if m
+    end
+
+    css = File.read(tpl_src)
+    vars.each { |k, v| css = css.gsub("{{ #{k} }}", v) }
+    File.write(css_out, css)
+    puts "Generated #{css_out}"
   else
-    puts "Note: omarchy-theme-set-templates not found — run it manually to generate CSS"
+    puts "Note: #{colors_file} not found — run omarchy-theme-set to generate"
   end
 end
 

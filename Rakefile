@@ -23,6 +23,22 @@ task :install do
   end
 end
 
+desc "Install Omarchy theme template and generate current CSS"
+task :install_theme do
+  themed_dir = File.expand_path("~/.config/omarchy/themed")
+  tpl_src    = File.expand_path("themed/lcctop-waybar.css.tpl", __dir__)
+  tpl_dest   = File.join(themed_dir, "lcctop-waybar.css.tpl")
+  FileUtils.mkdir_p(themed_dir)
+  FileUtils.cp(tpl_src, tpl_dest)
+  puts "Installed #{tpl_dest}"
+  if system("which omarchy-theme-set-templates > /dev/null 2>&1")
+    system("omarchy-theme-set-templates")
+    puts "Generated current theme CSS"
+  else
+    puts "Note: omarchy-theme-set-templates not found — run it manually to generate CSS"
+  end
+end
+
 desc "Install cctop plugin into ~/.claude/plugins/"
 task :install_plugin do
   plugins_dir = File.expand_path("~/.claude/plugins")

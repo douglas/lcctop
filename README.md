@@ -7,7 +7,7 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 ## Components
 
 - **`lcctop-hook`** — receives Claude Code hook events via stdin, writes session JSON files
-- **`lcctop-waybar`** — reads session files, outputs Waybar-compatible JSON (Phase 2)
+- **`lcctop-waybar`** — watches session files, outputs Waybar-compatible JSON continuously
 
 ## Installation
 
@@ -56,6 +56,53 @@ SessionError       → needs_attention
 SessionEnd         → (file removed)
 SubagentStart/Stop → (no status change)
 ```
+
+## Waybar Integration
+
+Add to `~/.config/waybar/config.jsonc` (in `modules-right`, before `cpu`):
+
+```jsonc
+"custom/lcctop": {
+  "exec": "lcctop-waybar",
+  "return-type": "json",
+  "format": "{}",
+  "tooltip": true,
+  "on-click": "hyprctl dispatch focuswindow 'title:.*claude.*'",
+  "signal": 11
+}
+```
+
+Add to `~/.config/waybar/style.css`:
+
+```css
+@import "../omarchy/current/theme/lcctop-waybar.css";
+
+#custom-lcctop { margin: 0 7.5px; min-width: 12px; }
+#custom-lcctop.permission { color: @lcctop-permission; }
+#custom-lcctop.attention  { color: @lcctop-attention;  }
+#custom-lcctop.working    { color: @lcctop-working;    }
+#custom-lcctop.idle       { color: @lcctop-idle;       }
+#custom-lcctop.compacting { color: @lcctop-compacting; }
+```
+
+Install the theme template (run once, then auto-updates on theme switch):
+
+```sh
+rake install_theme   # copies themed/lcctop-waybar.css.tpl and generates current CSS
+```
+
+### Waybar output format
+
+| Field | Values |
+|-------|--------|
+| `text` | `"󰚩"` (1 session) or `"󰚩 N"` (N sessions), `""` hides module |
+| `class` | `permission` / `attention` / `working` / `compacting` / `idle` |
+| `tooltip` | Per-session: name, status, branch, context line, relative time |
+
+### Display adjustments (view-only, files not modified)
+
+- **Idle timeout**: `waiting_input` for > 60 min → displayed as `idle`
+- **Permission + child**: `waiting_permission` + a child process started after the permission request → displayed as `working`
 
 ## Linux-Specific Implementation
 

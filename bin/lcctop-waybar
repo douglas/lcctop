@@ -1,0 +1,69 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# lcctop-waybar: Waybar custom module for lcctop.
+#
+# Runs continuously: watches ~/.cctop/sessions/ for changes and prints
+# one line of Waybar-compatible JSON on each state change.
+#
+# Add to waybar config:
+#   "custom/lcctop": {
+#     "exec": "lcctop-waybar",
+#     "return-type": "json",
+#     "format": "{}",
+#     "tooltip": true,
+#     "on-click": "hyprctl dispatch focuswindow 'title:.*claude.*'",
+#     "signal": 11
+#   }
+
+$LOAD_PATH.unshift(File.join(__dir__, "..", "lib"))
+require "lcctop"
+require "json"
+
+POLL_INTERVAL = 2  # seconds — fallback when inotifywait is unavailable
+
+def emit
+  result = Lcctop::WaybarOutput.render
+  puts JSON.generate(result)
+  $stdout.flush
+rescue StandardError => e
+  # Never crash — emit an empty state and log the error
+  puts JSON.generate({ "text" => "", "tooltip" => "lcctop error: #{e.message}", "class" => "" })
+  $stdout.flush
+  Lcctop::Logger.log_error("lcctop-waybar: #{e.message}\n#{e.backtrace.first(3).join("\n")}")
+end
+
+INOTIFYWAIT_AVAILABLE = system("which inotifywait > /dev/null 2>&1")
+
+def watch_with_inotify(dir)
+  emit  # initial output
+  IO.popen(
+    ["inotifywait", "--monitor", "--quiet",
+     "--event", "close_write,create,delete,moved_to,moved_from",
+     "--format", "%e",
+     dir],
+    err: File::NULL,
+  ) do |io|
+    io.each_line { emit }
+  end
+rescue Errno::ENOENT
+  watch_with_polling(dir)
+end
+
+def watch_with_polling(dir)
+  emit  # initial output
+  loop do
+    sleep POLL_INTERVAL
+    emit
+  end
+end
+
+FileUtils.mkdir_p(Lcctop::Config::SESSIONS_DIR, mode: 0o700) rescue nil
+
+sessions_dir = Lcctop::Config::SESSIONS_DIR
+
+if INOTIFYWAIT_AVAILABLE
+  watch_with_inotify(sessions_dir)
+else
+  watch_with_polling(sessions_dir)
+end

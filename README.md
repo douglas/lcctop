@@ -13,11 +13,12 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 
 ```sh
 rake install          # symlinks bin/ into ~/.local/bin/
-rake install_plugin   # symlinks plugins/cctop into ~/.claude/plugins/
+rake install_plugin   # symlinks plugin + registers hooks in ~/.claude/settings.local.json
 rake install_theme    # copies CSS template + generates current theme CSS
 ```
 
-Then restart Waybar: `omarchy-restart-waybar`
+Then restart Waybar (`omarchy-restart-waybar`) and start a **new Claude Code session** —
+hooks are loaded at session start, so the current session won't show up.
 
 On subsequent theme switches, `omarchy-theme-set` automatically regenerates
 `~/.config/omarchy/current/theme/lcctop-waybar.css` from the template.

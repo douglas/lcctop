@@ -14,7 +14,14 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 ```sh
 rake install          # symlinks bin/ into ~/.local/bin/
 rake install_plugin   # symlinks plugins/cctop into ~/.claude/plugins/
+rake install_theme    # copies CSS template + generates current theme CSS
 ```
+
+Then restart Waybar: `omarchy-restart-waybar`
+
+On subsequent theme switches, `omarchy-theme-set` automatically regenerates
+`~/.config/omarchy/current/theme/lcctop-waybar.css` from the template.
+Colors update live via `reload_style_on_change: true` — no waybar restart needed.
 
 ## Session Format
 

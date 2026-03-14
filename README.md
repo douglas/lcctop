@@ -8,6 +8,7 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 
 - **`lcctop-hook`** — receives Claude Code hook events via stdin, writes session JSON files
 - **`lcctop-waybar`** — watches session files, outputs Waybar-compatible JSON continuously
+- **`lcctop-pick`** — ratatui_ruby TUI session picker: j/k navigate, Enter focuses window, Esc/q cancel
 
 ## Installation
 
@@ -163,10 +164,46 @@ with the cctop format.
 - **PPID walk**: reads `/proc/{pid}/comm` to skip shell intermediaries
 - **TTY detection**: walks parent PIDs checking `tty_nr` in `/proc/{pid}/stat`
 
+## Session Picker
+
+`lcctop-pick` opens a floating TUI window showing all active sessions with colors, status, and
+branch/context info. Press Enter to focus the selected session's terminal window.
+
+Invoke via keybind (see xremap example below) or by clicking the Waybar icon.
+
+### Hyprland floating window rule
+
+Add to `~/.config/hypr/windows.conf` (or equivalent):
+
+```
+windowrule = float on, center on, size 700 400, match:initial_class org.omarchy.Lcctop
+```
+
+### xremap keybind (F18+Home)
+
+Add a global keymap entry **before** any `application:`-filtered sections:
+
+```yaml
+- name: lcctop
+  remap:
+    F18-Home: { launch: ["setsid", "uwsm-app", "--", "ghostty",
+                         "--class=org.omarchy.Lcctop", "--title=lcctop",
+                         "-e", "/home/douglas/.local/bin/lcctop-pick"] }
+```
+
+> **Note:** Use the full absolute path — uwsm-app runs in a clean systemd environment without
+> `~/.local/bin` in PATH.
+
+### Waybar on-click
+
+```jsonc
+"on-click": "setsid uwsm-app -- ghostty --class=org.omarchy.Lcctop --title=lcctop -e /home/douglas/.local/bin/lcctop-pick",
+```
+
 ## Development
 
 ```sh
 rake test   # run full test suite
 ```
 
-Requires Ruby stdlib only (no gem dependencies at runtime).
+Runtime dependency: `ratatui_ruby` (required by `lcctop-pick`).

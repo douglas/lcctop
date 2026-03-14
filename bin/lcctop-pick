@@ -265,12 +265,6 @@ end
 sessions = WaybarOutput.load_alive_sessions
 exit 0 if sessions.empty?
 
-# Auto-focus if only one session
-if sessions.size == 1
-  focus_session(sessions.first.pid, hyprland_windows)
-  exit 0
-end
-
 # Pre-select the first session needing attention
 selected_idx = sessions.index { |s|
   [SessionStatus::WAITING_PERMISSION, SessionStatus::WAITING_INPUT,

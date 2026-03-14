@@ -81,21 +81,7 @@ function getOrCreate(sessionID, directory) {
 // The opencode plugin API: a named async export that receives context
 // and returns a Hooks object with lifecycle callbacks.
 
-export const CctopPlugin = async ({ directory, client }) => {
-  // Bootstrap: register sessions already open when the plugin loads.
-  try {
-    const result = await client.session.list();
-    const list = result.data ?? [];
-    for (const session of list) {
-      getOrCreate(session.id, session.directory || directory);
-    }
-    for (const state of sessions.values()) {
-      writeSession(state);
-    }
-  } catch {
-    // No existing sessions or server not ready — events will create them.
-  }
-
+export const CctopPlugin = async ({ directory }) => {
   return {
     // General event handler — receives all opencode events.
     event: async ({ event }) => {

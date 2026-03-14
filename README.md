@@ -102,10 +102,10 @@ Add to `~/.config/waybar/style.css`:
 #custom-lcctop.compacting { color: @lcctop-compacting; }
 ```
 
-Install the theme template (run once, then auto-updates on theme switch):
+Install the theme templates (run once, then auto-updates on theme switch):
 
 ```sh
-rake install_theme   # copies themed/lcctop-waybar.css.tpl and generates current CSS
+rake install_theme   # copies lcctop-waybar.css.tpl + lcctop-pick-colors.json.tpl, generates current outputs
 ```
 
 ### Waybar tooltip layout
@@ -168,6 +168,9 @@ with the cctop format.
 
 `lcctop-pick` opens a floating TUI window showing all active sessions with colors, status, and
 branch/context info. Press Enter to focus the selected session's terminal window.
+
+Colors follow the active Omarchy theme automatically. Run `rake install_theme` once to register
+the template; after that, `omarchy-theme-set` regenerates colors on every theme switch.
 
 Invoke via keybind (see xremap example below) or by clicking the Waybar icon.
 

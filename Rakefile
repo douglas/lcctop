@@ -24,19 +24,25 @@ task :install do
   end
 end
 
-desc "Install Omarchy theme template and generate current CSS"
+desc "Install Omarchy theme templates and generate current outputs"
 task :install_theme do
   themed_dir  = File.expand_path("~/.config/omarchy/themed")
-  tpl_src     = File.expand_path("themed/lcctop-waybar.css.tpl", __dir__)
-  tpl_dest    = File.join(themed_dir, "lcctop-waybar.css.tpl")
   colors_file = File.expand_path("~/.config/omarchy/current/theme/colors.toml")
-  css_out     = File.expand_path("~/.config/omarchy/current/theme/lcctop-waybar.css")
+
+  templates = {
+    "lcctop-waybar.css.tpl"        => File.expand_path("~/.config/omarchy/current/theme/lcctop-waybar.css"),
+    "lcctop-pick-colors.json.tpl"  => File.expand_path("~/.config/omarchy/current/theme/lcctop-pick-colors.json"),
+  }
 
   FileUtils.mkdir_p(themed_dir)
-  FileUtils.cp(tpl_src, tpl_dest)
-  puts "Installed #{tpl_dest}"
+  templates.each_key do |tpl|
+    src  = File.expand_path("themed/#{tpl}", __dir__)
+    dest = File.join(themed_dir, tpl)
+    FileUtils.cp(src, dest)
+    puts "Installed #{dest}"
+  end
 
-  # Generate CSS for the current theme directly from colors.toml.
+  # Generate outputs for the current theme directly from colors.toml.
   # omarchy-theme-set-templates only runs during theme switches (uses next-theme/);
   # we replicate its sed substitution here for the already-active theme.
   if File.exist?(colors_file)
@@ -46,10 +52,13 @@ task :install_theme do
       vars[m[1]] = m[2] if m
     end
 
-    css = File.read(tpl_src)
-    vars.each { |k, v| css = css.gsub("{{ #{k} }}", v) }
-    File.write(css_out, css)
-    puts "Generated #{css_out}"
+    templates.each do |tpl, out_path|
+      src = File.expand_path("themed/#{tpl}", __dir__)
+      content = File.read(src)
+      vars.each { |k, v| content = content.gsub("{{ #{k} }}", v) }
+      File.write(out_path, content)
+      puts "Generated #{out_path}"
+    end
   else
     puts "Note: #{colors_file} not found — run omarchy-theme-set to generate"
   end

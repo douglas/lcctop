@@ -1,10 +1,9 @@
 import GLib from "gi://GLib";
-import App from "astal/gtk3/app";
-import Astal from "gi://Astal";
-import { bind } from "astal";
+import App from "ags/gtk4/app";
+import Astal from "gi://Astal?version=4.0";
 import SessionPicker from "./widget/SessionPicker.js";
 import StatusDot from "./widget/StatusDot.js";
-import { sessions, startPolling } from "./lib/sessions.js";
+import { sessions } from "./lib/sessions.js";
 import { STATUS_COLORS } from "./lib/types.js";
 
 // ---------------------------------------------------------------------------
@@ -29,7 +28,7 @@ function LcctopPickerWindow() {
       keymode={Astal.Keymode.ON_DEMAND}
       visible={false}
       // Click the scrim (outside picker) to close
-      onButtonPressEvent={() => {
+      onButtonPressed={() => {
         App.toggle_window("lcctop-picker");
         return true;
       }}
@@ -49,7 +48,7 @@ function LcctopPickerWindow() {
           css="min-width: 700px; min-height: 450px; max-width: 700px; max-height: 450px;"
           halign={3 /* CENTER */}
           valign={3 /* CENTER */}
-          onButtonPressEvent={() => true}
+          onButtonPressed={() => true}
         >
           <SessionPicker />
         </box>
@@ -73,12 +72,12 @@ function LcctopBarWindow() {
       exclusivity={Astal.Exclusivity.EXCLUSIVE}
       keymode={Astal.Keymode.NONE}
       visible={true}
-      onButtonPressEvent={() => {
+      onButtonPressed={() => {
         App.toggle_window("lcctop-picker");
         return true;
       }}
     >
-      {bind(sessions).as((list) => {
+      {sessions.as((list) => {
         const permCount = list.filter((s) => s.status === "waiting_permission").length;
         const attnCount = list.filter(
           (s) => s.status === "waiting_input" || s.status === "needs_attention",
@@ -142,18 +141,14 @@ function LcctopBarWindow() {
 // Application entry point
 // ---------------------------------------------------------------------------
 
-const cssPath = GLib.build_filenamev([
-  GLib.get_home_dir(),
-  ".config",
-  "ags",
-  "lcctop",
-  "style.css",
-]);
+// Use installed CSS if present; fall back to source directory (dev mode)
+const installedCss = GLib.build_filenamev([GLib.get_home_dir(), ".config", "ags", "lcctop", "style.css"]);
+const sourceCss = GLib.build_filenamev([GLib.get_current_dir(), "style.css"]);
+const cssPath = GLib.file_test(installedCss, GLib.FileTest.EXISTS) ? installedCss : sourceCss;
 
 App.start({
   css: cssPath,
   main() {
-    startPolling();
     LcctopPickerWindow();
     LcctopBarWindow();
   },

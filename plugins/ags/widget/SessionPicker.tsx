@@ -1,9 +1,7 @@
-import { Variable, bind } from "astal";
-import { Gtk } from "astal/gtk3";
-import App from "astal/gtk3/app";
-import { Box, Label, ScrolledWindow } from "astal/gtk3/widget";
-import { Session, SessionStatus, STATUS_COLORS } from "../lib/types.js";
-import { sessions, startPolling } from "../lib/sessions.js";
+import { createState, createEffect } from "ags";
+import App from "ags/gtk4/app";
+import { Session, STATUS_COLORS } from "../lib/types.js";
+import { sessions } from "../lib/sessions.js";
 import { focusSession } from "../lib/focus.js";
 import SessionCard from "./SessionCard.js";
 import StatusDot from "./StatusDot.js";
@@ -74,15 +72,14 @@ function initialSelection(list: Session[]): number {
 }
 
 export default function SessionPicker() {
-  startPolling();
-
-  const selectedIndex = Variable(initialSelection(sessions.get()));
+  const [selectedIndex, setSelectedIndex] = createState(initialSelection(sessions.peek()));
 
   // Keep selection in bounds when session list changes
-  sessions.subscribe((list) => {
-    const cur = selectedIndex.get();
+  createEffect(() => {
+    const list = sessions();
+    const cur = selectedIndex.peek();
     if (cur >= list.length) {
-      selectedIndex.set(Math.max(0, list.length - 1));
+      setSelectedIndex(Math.max(0, list.length - 1));
     }
   });
 
@@ -91,8 +88,8 @@ export default function SessionPicker() {
   }
 
   function activateSelected() {
-    const list = sessions.get();
-    const idx = selectedIndex.get();
+    const list = sessions.peek();
+    const idx = selectedIndex.peek();
     const session = list[idx];
     if (session) {
       focusSession(session);
@@ -101,15 +98,14 @@ export default function SessionPicker() {
   }
 
   function moveSelection(delta: number) {
-    const list = sessions.get();
+    const list = sessions.peek();
     if (!list.length) return;
-    const next = (selectedIndex.get() + delta + list.length) % list.length;
-    selectedIndex.set(next);
+    const next = (selectedIndex.peek() + delta + list.length) % list.length;
+    setSelectedIndex(next);
   }
 
   // Key handler returns true to stop propagation
-  function handleKey(_widget: Gtk.Widget, event: { get_keyval(): [boolean, number] }): boolean {
-    const [, keyval] = event.get_keyval();
+  function handleKey(_widget: unknown, keyval: number): boolean {
     // Gdk key constants
     const GDK_KEY = {
       j: 106,
@@ -149,11 +145,11 @@ export default function SessionPicker() {
       orientation={1 /* VERTICAL */}
       spacing={0}
       cssClasses={["session-picker"]}
-      onKeyPressEvent={handleKey}
+      onKeyPressed={handleKey}
       canFocus={true}
     >
       {/* Header */}
-      {bind(sessions).as((list) => (
+      {sessions.as((list) => (
         <PickerHeader sessionList={list} />
       ))}
 
@@ -168,7 +164,7 @@ export default function SessionPicker() {
         cssClasses={["picker-scroll"]}
       >
         <box orientation={1} spacing={0}>
-          {bind(sessions).as((list) => {
+          {sessions.as((list) => {
             if (!list.length) {
               return (
                 <box css="padding: 32px; min-height: 120px;">
@@ -184,12 +180,12 @@ export default function SessionPicker() {
             }
             return list.map((session, i) => (
               <box key={session.session_id} orientation={1} spacing={0}>
-                {bind(selectedIndex).as((sel) => (
+                {selectedIndex.as((sel) => (
                   <SessionCard
                     session={session}
                     selected={sel === i}
                     onActivate={() => {
-                      selectedIndex.set(i);
+                      setSelectedIndex(i);
                       activateSelected();
                     }}
                   />

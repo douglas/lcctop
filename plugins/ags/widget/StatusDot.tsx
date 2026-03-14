@@ -1,5 +1,3 @@
-import { Gtk } from "astal/gtk3";
-
 interface StatusDotProps {
   color: string;
   count: number;

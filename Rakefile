@@ -142,7 +142,7 @@ end
 desc "Bundle AGS plugin with ags bundle"
 task :build_ags do
   Dir.chdir(File.expand_path("plugins/ags", __dir__)) do
-    system "ags bundle app.ts lcctop.js" or abort "ags bundle failed"
+    system "ags bundle app.tsx lcctop.js" or abort "ags bundle failed"
   end
   puts "Built plugins/ags/lcctop.js"
 end

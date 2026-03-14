@@ -222,7 +222,7 @@ rake build_ags     # bundle with: ags bundle app.ts lcctop.js
 ### Running
 
 ```sh
-ags run ~/.config/ags/lcctop/app.ts
+ags run ~/.config/ags/lcctop/app.tsx
 ```
 
 Or add it to your AGS startup config to launch it automatically.

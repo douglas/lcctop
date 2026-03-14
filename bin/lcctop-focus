@@ -1,0 +1,73 @@
+#!/usr/bin/env ruby
+# lcctop-focus: Focus the terminal window running the most active Claude Code session.
+# Walks up the process tree from the session PID to find the containing terminal window.
+
+require "json"
+
+SESSIONS_DIR = File.expand_path("~/.cctop/sessions")
+
+# Read alive session PIDs from session files
+def alive_session_pids
+  return [] unless Dir.exist?(SESSIONS_DIR)
+  Dir.glob(File.join(SESSIONS_DIR, "*.json")).filter_map do |path|
+    data = JSON.parse(File.read(path))
+    pid  = data["pid"]&.to_i
+    next unless pid
+    next unless process_alive?(pid)
+    pid
+  rescue StandardError
+    nil
+  end
+end
+
+def process_alive?(pid)
+  Process.kill(0, pid)
+  true
+rescue Errno::ESRCH
+  false
+rescue Errno::EPERM
+  true
+end
+
+# Get parent PID from /proc
+def ppid_of(pid)
+  stat  = File.read("/proc/#{pid}/stat")
+  right = stat.rindex(")")
+  return nil unless right
+  stat[(right + 2)..].split[1].to_i
+rescue StandardError
+  nil
+end
+
+# Get all Hyprland windows as {pid => address} map
+def hyprland_windows
+  raw = `hyprctl clients -j 2>/dev/null`
+  JSON.parse(raw).each_with_object({}) do |c, h|
+    h[c["pid"].to_i] = c["address"] if c["pid"]
+  end
+rescue StandardError
+  {}
+end
+
+# Walk up the process tree from pid, return Hyprland window address if found
+def find_window_for_pid(pid, windows)
+  6.times do
+    return windows[pid] if windows.key?(pid)
+    parent = ppid_of(pid)
+    break if parent.nil? || parent <= 1
+    pid = parent
+  end
+  nil
+end
+
+windows = hyprland_windows
+pids    = alive_session_pids
+
+address = pids.filter_map { |pid| find_window_for_pid(pid, windows) }.first
+
+if address
+  exec "hyprctl", "dispatch", "focuswindow", "address:#{address}"
+else
+  # Fallback: focus most recently active terminal
+  exec "hyprctl", "dispatch", "focuswindow", "class:com.mitchellh.ghostty"
+end

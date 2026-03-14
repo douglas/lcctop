@@ -26,9 +26,9 @@ class TestWaybarOutput < Minitest::Test
 
   def test_disconnected_when_no_sessions
     result = WaybarOutput.build([])
-    assert_equal WaybarOutput::ICON, result["text"]
-    assert_equal "",                 result["tooltip"]
-    assert_equal "disconnected",     result["class"]
+    refute_empty result["text"]
+    assert_equal "",             result["tooltip"]
+    assert_equal "disconnected", result["class"]
   end
 
   # --- format_text ---
@@ -36,7 +36,8 @@ class TestWaybarOutput < Minitest::Test
   def test_text_single_session
     sessions = [build_session(status: SessionStatus::WORKING)]
     result = WaybarOutput.build(sessions)
-    assert_equal WaybarOutput::ICON, result["text"]
+    assert_equal "",      result["alt"]
+    refute_empty result["text"]
   end
 
   def test_text_multiple_sessions
@@ -45,26 +46,50 @@ class TestWaybarOutput < Minitest::Test
       build_session(status: SessionStatus::IDLE),
     ]
     result = WaybarOutput.build(sessions)
-    assert_equal "#{WaybarOutput::ICON} 2", result["text"]
+    assert_equal " 2", result["alt"]
   end
 
   # --- class ---
 
-  def test_class_connected_when_sessions_present
-    sessions = [build_session(status: SessionStatus::WORKING)]
-    assert_equal "connected", WaybarOutput.build(sessions)["class"]
-  end
-
-  def test_class_connected_regardless_of_status
-    [SessionStatus::IDLE, SessionStatus::WAITING_PERMISSION,
-     SessionStatus::WAITING_INPUT, SessionStatus::COMPACTING].each do |status|
-      sessions = [build_session(status: status)]
-      assert_equal "connected", WaybarOutput.build(sessions)["class"], "expected connected for #{status}"
-    end
-  end
-
   def test_class_disconnected_when_no_sessions
     assert_equal "disconnected", WaybarOutput.build([])["class"]
+  end
+
+  def test_class_permission_for_waiting_permission
+    sessions = [build_session(status: SessionStatus::WAITING_PERMISSION)]
+    assert_equal "permission", WaybarOutput.build(sessions)["class"]
+  end
+
+  def test_class_attention_for_waiting_input
+    sessions = [build_session(status: SessionStatus::WAITING_INPUT)]
+    assert_equal "attention", WaybarOutput.build(sessions)["class"]
+  end
+
+  def test_class_attention_for_needs_attention
+    sessions = [build_session(status: SessionStatus::NEEDS_ATTENTION)]
+    assert_equal "attention", WaybarOutput.build(sessions)["class"]
+  end
+
+  def test_class_working
+    sessions = [build_session(status: SessionStatus::WORKING)]
+    assert_equal "working", WaybarOutput.build(sessions)["class"]
+  end
+
+  def test_class_compacting
+    sessions = [build_session(status: SessionStatus::COMPACTING)]
+    assert_equal "compacting", WaybarOutput.build(sessions)["class"]
+  end
+
+  def test_class_idle
+    sessions = [build_session(status: SessionStatus::IDLE)]
+    assert_equal "idle", WaybarOutput.build(sessions)["class"]
+  end
+
+  def test_class_uses_highest_priority_session
+    perm    = build_session(status: SessionStatus::WAITING_PERMISSION)
+    working = build_session(status: SessionStatus::WORKING)
+    sessions = Session.sorted([working, perm])
+    assert_equal "permission", WaybarOutput.build(sessions)["class"]
   end
 
   # --- tooltip ---

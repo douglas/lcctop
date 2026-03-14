@@ -261,7 +261,7 @@ module Lcctop
       pid = Process.ppid
       4.times do
         name = process_name(pid)
-        break unless shells.include?(name)
+        break unless shells.include?(name) || name.end_with?(".sh")
         parent = ppid_of(pid)
         break if parent <= 1
         pid = parent

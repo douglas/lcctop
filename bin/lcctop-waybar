@@ -27,8 +27,8 @@ def emit
   puts JSON.generate(result)
   $stdout.flush
 rescue StandardError => e
-  # Never crash — emit an empty state and log the error
-  puts JSON.generate({ "text" => "", "tooltip" => "lcctop error: #{e.message}", "class" => "" })
+  # Never crash — emit a safe state and log the error
+  puts JSON.generate({ "text" => Lcctop::WaybarOutput::ICON, "tooltip" => "lcctop error: #{e.message}", "class" => "disconnected" })
   $stdout.flush
   Lcctop::Logger.log_error("lcctop-waybar: #{e.message}\n#{e.backtrace.first(3).join("\n")}")
 end
@@ -60,10 +60,4 @@ end
 
 FileUtils.mkdir_p(Lcctop::Config::SESSIONS_DIR, mode: 0o700) rescue nil
 
-sessions_dir = Lcctop::Config::SESSIONS_DIR
-
-if INOTIFYWAIT_AVAILABLE
-  watch_with_inotify(sessions_dir)
-else
-  watch_with_polling(sessions_dir)
-end
+emit

@@ -33,15 +33,30 @@ module Lcctop
         .then { |sessions| Session.sorted(sessions) }
     end
 
+    # Maps session status to waybar CSS class (applied to #custom-lcctop).
+    STATUS_CLASS = {
+      SessionStatus::WAITING_PERMISSION => "permission",
+      SessionStatus::WAITING_INPUT      => "attention",
+      SessionStatus::NEEDS_ATTENTION    => "attention",
+      SessionStatus::WORKING            => "working",
+      SessionStatus::COMPACTING         => "compacting",
+      SessionStatus::IDLE               => "idle",
+    }.freeze
+
     # Build the Waybar JSON hash from a pre-sorted list of display-adjusted sessions.
+    # text  → plain string so waybar doesn't hide the module
+    # alt   → session count suffix shown via "󰚩{alt}" format in waybar config
+    # class → CSS class for status color (disconnected when no sessions)
     def self.build(sessions)
       if sessions.empty?
-        { "text" => ICON, "tooltip" => "", "class" => "disconnected" }
+        { "text" => "lcctop", "alt" => "", "tooltip" => "", "class" => "disconnected" }
       else
+        n = sessions.size
         {
-          "text"    => format_text(sessions),
+          "text"    => "lcctop",
+          "alt"     => n > 1 ? " #{n}" : "",
           "tooltip" => format_tooltip(sessions),
-          "class"   => "connected",
+          "class"   => STATUS_CLASS.fetch(sessions.first.status, "idle"),
         }
       end
     end

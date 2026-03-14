@@ -167,7 +167,8 @@ with the cctop format.
 ## Session Picker
 
 `lcctop-pick` opens a floating TUI window showing all active sessions with colors, status, and
-branch/context info. Press Enter to focus the selected session's terminal window.
+branch/context info. Press Enter to focus the selected session's terminal window — including
+switching to the correct Ghostty tab if the session is in a multi-tab window.
 
 Colors follow the active Omarchy theme automatically. Run `rake install_theme` once to register
 the template; after that, `omarchy-theme-set` regenerates colors on every theme switch.

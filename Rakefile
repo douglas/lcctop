@@ -15,7 +15,7 @@ task default: :test
 desc "Symlink bin/lcctop-hook and bin/lcctop-waybar into ~/.local/bin/"
 task :install do
   FileUtils.mkdir_p(LOCAL_BIN)
-  %w[lcctop-hook lcctop-waybar lcctop-focus lcctop-pick].each do |bin|
+  %w[lcctop-hook lcctop-waybar lcctop-focus lcctop-pick lcctop-pick-bt].each do |bin|
     src  = File.expand_path("bin/#{bin}", __dir__)
     dest = File.join(LOCAL_BIN, bin)
     next unless File.exist?(src)

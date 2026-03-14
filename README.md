@@ -15,6 +15,14 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 rake install          # symlinks bin/ into ~/.local/bin/
 rake install_plugin   # symlinks plugin + registers hooks in ~/.claude/settings.local.json
 rake install_theme    # copies CSS template + generates current theme CSS
+rake install_opencode # copies opencode plugin.js to ~/.config/opencode/plugins/cctop.js
+```
+
+To register lcctop hooks in a **project-level** `.claude/settings.local.json` (needed when the
+project has its own settings that would override the user-level hooks):
+
+```sh
+rake 'install_hooks[/path/to/project]'
 ```
 
 Then restart Waybar (`omarchy-restart-waybar`) and start a **new Claude Code session** —
@@ -99,18 +107,54 @@ Install the theme template (run once, then auto-updates on theme switch):
 rake install_theme   # copies themed/lcctop-waybar.css.tpl and generates current CSS
 ```
 
+### Waybar tooltip layout
+
+The tooltip matches cctop's card layout:
+
+```
+cctop    ● 1  ● 2  ● 1          ← colored dots: red=permission, amber=attention, green=working, gray=idle
+────────────────────
+▍ project-name  [2 agents]  CC    Permission
+  main / Permission needed                    just now
+────────────────────
+▍ other-project  OC    Working
+  feature-branch / Running: npm test          5m ago
+```
+
+Source badge colors: **CC** = amber (`#f9e2af`), **OC** = blue (`#89b4fa`)
+
 ### Waybar output format
 
 | Field | Values |
 |-------|--------|
 | `text` | `"󰚩"` (1 session) or `"󰚩 N"` (N sessions), `""` hides module |
 | `class` | `permission` / `attention` / `working` / `compacting` / `idle` |
-| `tooltip` | Per-session: name, status, branch, context line, relative time |
+| `tooltip` | Header with status dot counts, then per-session cards |
 
 ### Display adjustments (view-only, files not modified)
 
 - **Idle timeout**: `waiting_input` for > 60 min → displayed as `idle`
 - **Permission + child**: `waiting_permission` + a child process started after the permission request → displayed as `working`
+
+## Opencode Support
+
+lcctop can also track [opencode](https://opencode.ai) sessions via an in-process JS plugin.
+
+```sh
+rake install_opencode   # copies plugins/opencode/plugin.js to ~/.config/opencode/plugins/cctop.js
+```
+
+Then add the plugin to your `opencode.json`:
+
+```json
+{
+  "plugin": ["file://~/.config/opencode/plugins/cctop.js"]
+}
+```
+
+Opencode sessions appear in the Waybar tooltip with an **OC** badge (blue). The session files
+are written to `~/.cctop/sessions/{pid}.json` with `"source": "opencode"`, fully compatible
+with the cctop format.
 
 ## Linux-Specific Implementation
 

@@ -103,3 +103,61 @@ task :install_plugin do
   puts "Registered lcctop hooks in #{settings_path}"
   puts "Restart Claude Code sessions to activate."
 end
+
+desc "Install opencode plugin to ~/.config/opencode/plugins/cctop.js"
+task :install_opencode do
+  opencode_plugins_dir = File.expand_path("~/.config/opencode/plugins")
+  src  = File.expand_path("plugins/opencode/plugin.js", __dir__)
+  dest = File.join(opencode_plugins_dir, "cctop.js")
+
+  FileUtils.mkdir_p(opencode_plugins_dir)
+  FileUtils.cp(src, dest)
+  puts "Installed #{dest}"
+  puts
+  puts "To activate, add the following to your opencode.json plugin array:"
+  puts %|  "file://~/.config/opencode/plugins/cctop.js"|
+end
+
+desc "Inject lcctop hooks into a project's .claude/settings.local.json (use: rake 'install_hooks[/path/to/project]')"
+task :install_hooks, [:project_path] do |_, args|
+  project_path = args[:project_path]
+  abort "Usage: rake 'install_hooks[/path/to/project]'" if project_path.nil? || project_path.empty?
+
+  settings_dir  = File.join(File.expand_path(project_path), ".claude")
+  settings_path = File.join(settings_dir, "settings.local.json")
+  run_hook      = File.expand_path("~/.claude/plugins/cctop/hooks/run-hook.sh")
+
+  FileUtils.mkdir_p(settings_dir)
+  settings = File.exist?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
+  settings["hooks"] ||= {}
+  h = settings["hooks"]
+
+  hook_entries = {
+    "SessionStart"     => { "matcher" => "",   "async" => false },
+    "UserPromptSubmit" => { "matcher" => ".*", "async" => false },
+    "PreToolUse"       => { "matcher" => ".*", "async" => true  },
+    "PostToolUse"      => { "matcher" => ".*", "async" => true  },
+    "Stop"             => { "matcher" => ".*", "async" => false },
+    "Notification"     => { "matcher" => ".*", "async" => false },
+    "PermissionRequest"=> { "matcher" => ".*", "async" => false },
+    "SubagentStart"    => { "matcher" => ".*", "async" => false },
+    "SubagentStop"     => { "matcher" => ".*", "async" => false },
+    "PreCompact"       => { "matcher" => ".*", "async" => false },
+    "SessionEnd"       => { "matcher" => ".*", "async" => false },
+  }
+
+  hook_entries.each do |event, opts|
+    cmd = "#{run_hook} #{event}"
+    h[event] ||= []
+    already = h[event].any? { |e| e["hooks"]&.any? { |hk| hk["command"] == cmd } }
+    next if already
+
+    hook_def = { "type" => "command", "command" => cmd }
+    hook_def["async"] = true if opts["async"]
+    h[event] << { "matcher" => opts["matcher"], "hooks" => [hook_def] }
+  end
+
+  File.write(settings_path, JSON.pretty_generate(settings) + "\n")
+  puts "Registered lcctop hooks in #{settings_path}"
+  puts "Restart Claude Code in that project to activate."
+end

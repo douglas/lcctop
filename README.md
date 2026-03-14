@@ -115,10 +115,10 @@ The tooltip matches cctop's card layout:
 ```
 cctop    ● 1  ● 2  ● 1          ← colored dots: red=permission, amber=attention, green=working, gray=idle
 ────────────────────
-▍ project-name  [2 agents]  CC    Permission
-  main / Permission needed                    just now
+▍ project-name  2 agents  CC              Permission
+  main / Permission needed                  just now
 ────────────────────
-▍ other-project  OC    Working
+▍ other-project  OC                          Working
   feature-branch / Running: npm test          5m ago
 ```
 
@@ -248,11 +248,14 @@ centered on screen at 700×450 px.
 ### Appearance
 
 - Catppuccin Mocha color scheme
-- Rounded dark panel with per-session status accent bars
+- Rounded dark panel with per-session status accent bars (full card height)
+- Card layout matches cctop: name / agent count / source badge on left; status label + time stacked right
+- Agent count: `3 agents` (no brackets), `waiting_input` shows **Waiting**
 - Header shows colored dot counts for each status tier
-- Source badge: **CC** (amber) = Claude Code, **OC** (blue) = opencode
+- Source badge: **CC** (amber) = Claude Code, **OC** (blue) = opencode — text only, no background box
 - Optional bottom-right bar widget showing session count and status dots
   (click to toggle the picker)
+- Keyboard focus: uses `EXCLUSIVE` keymode so j/k/Enter/Esc work immediately on open
 
 ## Tauri Panel (Prototype)
 

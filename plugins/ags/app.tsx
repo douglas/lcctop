@@ -94,7 +94,7 @@ function LcctopPickerWindow() {
         Astal.WindowAnchor.RIGHT
       }
       exclusivity={Astal.Exclusivity.IGNORE}
-      keymode={Astal.Keymode.ON_DEMAND}
+      keymode={Astal.Keymode.EXCLUSIVE}
       visible={false}
       onRealize={attachControllers}
     >

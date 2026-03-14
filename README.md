@@ -205,6 +205,130 @@ Add a global keymap entry **before** any `application:`-filtered sections:
 "on-click": "setsid uwsm-app -- ghostty --class=org.omarchy.Lcctop --title=lcctop -e /home/douglas/.local/bin/lcctop-pick",
 ```
 
+## AGS / Astal Session Picker
+
+`plugins/ags/` is a floating GTK panel session picker for Hyprland using
+[AGS v2](https://aylur.github.io/ags-docs/) and the Astal widget toolkit.
+It provides the same session list, status colors, and focus logic as
+`lcctop-pick`, but rendered as a native GTK layer-shell window.
+
+### Installation and building
+
+```sh
+rake install_ags   # copy plugins/ags/ to ~/.config/ags/lcctop/
+rake build_ags     # bundle with: ags bundle app.ts lcctop.js
+```
+
+### Running
+
+```sh
+ags run ~/.config/ags/lcctop/app.ts
+```
+
+Or add it to your AGS startup config to launch it automatically.
+
+### Hyprland keybind
+
+```
+bind = SUPER, grave, exec, ags request 'toggle lcctop-picker'
+```
+
+This toggles the floating picker window open/closed. The window appears
+centered on screen at 700×450 px.
+
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Next session |
+| `k` / `↑` | Previous session |
+| `Enter` | Focus selected session (raises window + switches tab) |
+| `q` / `Esc` | Close picker |
+
+### Appearance
+
+- Catppuccin Mocha color scheme
+- Rounded dark panel with per-session status accent bars
+- Header shows colored dot counts for each status tier
+- Source badge: **CC** (amber) = Claude Code, **OC** (blue) = opencode
+- Optional bottom-right bar widget showing session count and status dots
+  (click to toggle the picker)
+
+## Tauri Panel (Prototype)
+
+`plugins/tauri/` is a floating web-UI session picker built with
+[Tauri v2](https://tauri.app/) (Rust backend) and
+[Svelte 5](https://svelte.dev/) (frontend).
+It provides the same session list, status colors, and focus logic as `lcctop-pick`,
+but rendered in a transparent WebView overlay window.
+
+### Build and install
+
+```sh
+# Install JS deps first (once):
+cd plugins/tauri && npm install
+
+# Build release binary:
+rake build_tauri
+
+# Symlink to ~/.local/bin/lcctop-panel:
+rake install_tauri
+```
+
+### Dev mode
+
+```sh
+cd plugins/tauri
+cargo tauri dev
+```
+
+Vite hot-reloads the frontend on port 1420; Rust recompiles on save.
+
+### Hyprland window rules
+
+Add to `~/.config/hypr/hyprland.conf`:
+
+```ini
+windowrulev2 = float,    class:^(lcctop-tauri)$
+windowrulev2 = pin,      class:^(lcctop-tauri)$
+windowrulev2 = noborder, class:^(lcctop-tauri)$
+windowrulev2 = noshadow, class:^(lcctop-tauri)$
+windowrulev2 = size 420 500, class:^(lcctop-tauri)$
+windowrulev2 = move 50% 30, class:^(lcctop-tauri)$
+```
+
+### Keybind suggestion (xremap)
+
+```yaml
+- name: lcctop-panel
+  remap:
+    F18-Home: { launch: ["setsid", "uwsm-app", "--", "lcctop-panel"] }
+```
+
+Or in Hyprland directly:
+
+```ini
+bind = SUPER, grave, exec, lcctop-panel
+```
+
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Next session |
+| `k` / `↑` | Previous session |
+| `Enter` | Focus selected session (raises window + switches tab) |
+| `q` / `Esc` | Hide panel |
+
+### Appearance
+
+- Catppuccin Mocha color scheme with `backdrop-filter: blur`
+- 420×500 px transparent borderless window
+- Per-session left accent bar colored by status
+- Header shows colored dot counts per status tier
+- Source badge: **CC** (amber) = Claude Code, **OC** (blue) = opencode
+- Auto-refreshes via `notify`-based file watcher on `~/.cctop/sessions/`
+
 ## Development
 
 ```sh

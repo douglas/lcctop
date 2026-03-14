@@ -97,7 +97,7 @@ class TestWaybarOutput < Minitest::Test
   def test_tooltip_includes_project_name_and_status
     sessions = [build_session(status: SessionStatus::WORKING)]
     assert_includes WaybarOutput.build(sessions)["tooltip"], "myproject"
-    assert_includes WaybarOutput.build(sessions)["tooltip"], "WORKING"
+    assert_includes WaybarOutput.build(sessions)["tooltip"], "Working"
     assert_includes WaybarOutput.build(sessions)["tooltip"], "main"
   end
 
@@ -197,6 +197,78 @@ class TestWaybarOutput < Minitest::Test
 
   def test_session_tooltip_lines_compacting
     session = build_session(status: SessionStatus::COMPACTING)
-    assert_includes WaybarOutput.session_tooltip_lines(session), "Compacting context..."
+    lines   = WaybarOutput.session_tooltip_lines(session)
+    assert_includes lines, "Compacting context..."
+    assert_includes lines, "Compacting"
+  end
+
+  def test_session_tooltip_lines_status_title_case
+    {
+      SessionStatus::WAITING_PERMISSION => "Permission",
+      SessionStatus::WAITING_INPUT      => "Waiting",
+      SessionStatus::WORKING            => "Working",
+      SessionStatus::IDLE               => "Idle",
+    }.each do |status, label|
+      session = build_session(status: status)
+      assert_includes WaybarOutput.session_tooltip_lines(session), label, "Expected #{label} for #{status}"
+    end
+  end
+
+  def test_session_tooltip_lines_cc_badge_amber
+    session = build_session(status: SessionStatus::IDLE)
+    assert_includes WaybarOutput.session_tooltip_lines(session), "#f9e2af"
+    assert_includes WaybarOutput.session_tooltip_lines(session), "CC"
+  end
+
+  def test_session_tooltip_lines_time_on_second_line
+    session = build_session(status: SessionStatus::IDLE, last_activity: Time.now - 90)
+    lines   = WaybarOutput.session_tooltip_lines(session).split("\n")
+    assert_equal 2, lines.size
+    # Relative time must appear on line 2 only
+    refute_includes lines[0], "ago"
+    assert_includes lines[1], "ago"
+  end
+
+  def test_session_tooltip_lines_no_project_path
+    session = build_session(status: SessionStatus::IDLE)
+    lines   = WaybarOutput.session_tooltip_lines(session)
+    # full path must not appear — only the display name (project_name) is shown
+    refute_includes lines, "/home/user/myproject"
+    refute_includes lines, "/home/user"
+  end
+
+  def test_session_tooltip_lines_agents_when_nonzero
+    session = build_session(status: SessionStatus::WORKING)
+    session.active_subagents = [
+      SubagentInfo.new(agent_id: "a1", agent_type: "general", started_at: nil),
+    ]
+    assert_includes WaybarOutput.session_tooltip_lines(session), "[1 agents]"
+  end
+
+  def test_format_header_shows_dots_for_each_group
+    sessions = [
+      build_session(status: SessionStatus::WAITING_PERMISSION),
+      build_session(status: SessionStatus::WORKING),
+      build_session(status: SessionStatus::IDLE),
+    ]
+    header = WaybarOutput.format_header(sessions)
+    assert_includes header, "cctop"
+    assert_includes header, "#f38ba8"   # red for permission
+    assert_includes header, "#a6e3a1"   # green for working
+    assert_includes header, "#6c7086"   # gray for idle
+    refute_includes header, "#f9e2af"   # amber (no attention sessions)
+  end
+
+  def test_format_header_empty_when_no_sessions
+    assert_empty WaybarOutput.format_header([])
+  end
+
+  def test_tooltip_includes_header_with_multiple_sessions
+    sessions = [
+      build_session(status: SessionStatus::WORKING, project_path: "/home/user/proj_a"),
+      build_session(status: SessionStatus::IDLE,    project_path: "/home/user/proj_b"),
+    ]
+    tooltip = WaybarOutput.build(sessions)["tooltip"]
+    assert_includes tooltip, "cctop"
   end
 end

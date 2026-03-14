@@ -8,12 +8,17 @@ module Lcctop
     ICON = "󰚩"
 
     STATUS_LABEL = {
-      SessionStatus::WAITING_PERMISSION => "PERMISSION",
-      SessionStatus::WAITING_INPUT      => "WAITING",
-      SessionStatus::NEEDS_ATTENTION    => "ATTENTION",
-      SessionStatus::WORKING            => "WORKING",
-      SessionStatus::COMPACTING         => "COMPACTING",
-      SessionStatus::IDLE               => "IDLE",
+      SessionStatus::WAITING_PERMISSION => "Permission",
+      SessionStatus::WAITING_INPUT      => "Waiting",
+      SessionStatus::NEEDS_ATTENTION    => "Attention",
+      SessionStatus::WORKING            => "Working",
+      SessionStatus::COMPACTING         => "Compacting",
+      SessionStatus::IDLE               => "Idle",
+    }.freeze
+
+    SOURCE_BADGE_COLOR = {
+      "CC" => "#f9e2af",  # amber
+      "OC" => "#89b4fa",  # blue
     }.freeze
 
     # Build Waybar JSON from the current sessions directory.
@@ -112,32 +117,54 @@ module Lcctop
     end
 
     def self.format_tooltip(sessions)
-      sessions.map { |s| session_tooltip_lines(s) }.join("\n<span color=\"#313244\">────────────────────</span>\n")
+      header = format_header(sessions)
+      cards  = sessions.map { |s| session_tooltip_lines(s) }.join("\n<span color=\"#313244\">────────────────────</span>\n")
+      header.empty? ? cards : "#{header}\n<span color=\"#313244\">────────────────────</span>\n#{cards}"
     end
 
-    # Renders one session as two Pango-marked-up lines, mimicking cctop's card layout:
+    # Header bar showing colored dot counts per status group, e.g.:
+    #   cctop    ● 1  ● 2  ● 1
+    def self.format_header(sessions)
+      perm    = sessions.count { |s| s.status == SessionStatus::WAITING_PERMISSION }
+      attn    = sessions.count { |s| [SessionStatus::WAITING_INPUT, SessionStatus::NEEDS_ATTENTION].include?(s.status) }
+      working = sessions.count { |s| [SessionStatus::WORKING, SessionStatus::COMPACTING].include?(s.status) }
+      idle    = sessions.count { |s| s.status == SessionStatus::IDLE }
+
+      dots = []
+      dots << %(<span color="#f38ba8">● #{perm}</span>)    if perm > 0
+      dots << %(<span color="#f9e2af">● #{attn}</span>)    if attn > 0
+      dots << %(<span color="#a6e3a1">● #{working}</span>) if working > 0
+      dots << %(<span color="#6c7086">● #{idle}</span>)    if idle > 0
+
+      return "" if dots.empty?
+      "<b>cctop</b>    #{dots.join("  ")}"
+    end
+
+    # Renders one session as two Pango-marked-up lines, matching cctop's card layout:
     #
-    #   ▍ project-name  CC  [N agents]    STATUS  · just now
-    #     branch / context line
+    #   ▍ project-name  [N agents]  CC/OC    Status
+    #     branch / context line                         just now
     #
     def self.session_tooltip_lines(session)
-      label  = STATUS_LABEL.fetch(session.status, session.status.upcase)
+      label  = STATUS_LABEL.fetch(session.status, session.status.capitalize)
       color  = STATUS_COLOR.fetch(session.status, "#6c7086")
       border = %(<span color="#{color}">▍</span>)
-      source = %(<span color="#cba6f7">#{h session.source_label}</span>)
-      agents = session.subagent_count > 0 ?
-        %(  <span color="#cba6f7">#{session.subagent_count} agents</span>) : ""
 
-      name_part   = %(<b>#{h session.display_name}</b>  #{source}#{agents})
-      status_part = %(<span color="#{color}">#{label}</span>  <span color="#6c7086">#{h session.relative_time}</span>)
-      header      = "#{border} #{name_part}    #{status_part}"
+      src_color = SOURCE_BADGE_COLOR.fetch(session.source_label, "#f9e2af")
+      source    = %(<span color="#{src_color}">#{h session.source_label}</span>)
+      agents    = session.subagent_count > 0 ?
+        %(  <span color="#cba6f7">[#{session.subagent_count} agents]</span>) : ""
 
-      path        = session.project_path.to_s.sub(Dir.home, "~")
-      branch_ctx  = "#{h path}  ·  #{h session.branch}"
+      name_part   = %(<b>#{h session.display_name}</b>#{agents}  #{source})
+      status_part = %(<span color="#{color}">#{label}</span>)
+      line1       = "#{border} #{name_part}    #{status_part}"
+
+      branch_ctx  = h(session.branch)
       branch_ctx += "  /  #{h session.context_line}" if session.context_line
-      detail      = %(  <span color="#6c7086">#{branch_ctx}</span>)
+      time_part   = %(<span color="#6c7086">#{h session.relative_time}</span>)
+      line2       = %(  <span color="#6c7086">#{branch_ctx}</span>    #{time_part})
 
-      "#{header}\n#{detail}"
+      "#{line1}\n#{line2}"
     end
 
     # --- Linux child PID enumeration ---

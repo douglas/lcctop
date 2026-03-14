@@ -9,7 +9,6 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 - **`lcctop-hook`** — receives Claude Code hook events via stdin, writes session JSON files
 - **`lcctop-waybar`** — watches session files, outputs Waybar-compatible JSON continuously
 - **`lcctop-pick`** — ratatui_ruby TUI session picker: j/k navigate, Enter focuses window, Esc/q cancel
-- **`lcctop-pick-bt`** — bubbletea+lipgloss TUI session picker (Elm architecture, parallel implementation)
 
 ## Installation
 
@@ -212,11 +211,4 @@ Add a global keymap entry **before** any `application:`-filtered sections:
 rake test   # run full test suite
 ```
 
-Runtime dependencies: `ratatui_ruby` (required by `lcctop-pick`), `bubbletea` + `lipgloss` (required by `lcctop-pick-bt`).
-
-### lcctop-pick-bt (Elm architecture alternative)
-
-`lcctop-pick-bt` is a parallel implementation using bubbletea (Elm model/update/view loop) and
-lipgloss (string-based styling). It is identical in behavior but uses a different rendering
-approach: instead of ratatui_ruby's immediate-mode `Paragraph+Rect` layout, it composes styled
-strings with `Lipgloss.join_vertical` and renders via bubbletea's alt-screen loop.
+Runtime dependencies: `ratatui_ruby` (required by `lcctop-pick`).

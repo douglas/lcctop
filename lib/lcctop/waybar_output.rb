@@ -156,7 +156,10 @@ module Lcctop
       end
     end
 
-    private_class_method def self.h(str) = CGI.escapeHTML(str.to_s)
+    def self.h(str)
+      CGI.escapeHTML(str.to_s)
+    end
+    private_class_method :h
 
     private_class_method def self.dup_with_status(session, new_status)
       session.dup.tap { |s| s.status = new_status }

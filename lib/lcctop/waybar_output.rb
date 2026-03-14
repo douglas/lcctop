@@ -132,7 +132,8 @@ module Lcctop
       status_part = %(<span color="#{color}">#{label}</span>  <span color="#6c7086">#{h session.relative_time}</span>)
       header      = "#{border} #{name_part}    #{status_part}"
 
-      branch_ctx  = h(session.branch)
+      path        = session.project_path.to_s.sub(Dir.home, "~")
+      branch_ctx  = "#{h path}  ·  #{h session.branch}"
       branch_ctx += "  /  #{h session.context_line}" if session.context_line
       detail      = %(  <span color="#6c7086">#{branch_ctx}</span>)
 

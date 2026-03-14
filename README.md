@@ -168,7 +168,8 @@ with the cctop format.
 
 `lcctop-pick` opens a floating TUI window showing all active sessions with colors, status, and
 branch/context info. Press Enter to focus the selected session's terminal window — including
-switching to the correct Ghostty tab if the session is in a multi-tab window.
+switching to the correct tab for Ghostty (`wtype Alt+N`) and Kitty (`kitty @ focus-tab`).
+Alacritty has no tabs; window focus is sufficient.
 
 Colors follow the active Omarchy theme automatically. Run `rake install_theme` once to register
 the template; after that, `omarchy-theme-set` regenerates colors on every theme switch.

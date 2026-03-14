@@ -29,12 +29,18 @@ def find_window_for_pid(pid, windows)
   nil
 end
 
-# Walk up the process tree to find the PID whose comm matches "ghostty".
-def find_ghostty_pid(pid)
+# Walk up the process tree to find the nearest known terminal emulator.
+# Returns { type: :ghostty/:kitty/:alacritty, pid: Integer } or nil.
+def detect_terminal(pid)
   8.times do
-    stat = File.read("/proc/#{pid}/stat").split rescue nil
+    stat = (File.read("/proc/#{pid}/stat").split rescue nil)
     return nil unless stat
-    return pid if stat[1] == "(ghostty)"
+    type = case stat[1]
+           when "(ghostty)"   then :ghostty
+           when "(kitty)"     then :kitty
+           when "(alacritty)" then :alacritty
+           end
+    return { type: type, pid: pid } if type
     ppid = stat[3].to_i
     return nil if ppid <= 1
     pid = ppid
@@ -42,30 +48,24 @@ def find_ghostty_pid(pid)
   nil
 end
 
-# Return the 1-based tab index (sorted by process start time) for the tab in
-# the given Ghostty instance that contains +session_pid+.  Returns nil when
-# the session can't be attributed to a tab (e.g. not running under Ghostty, or
-# already on the active tab).
-def ghostty_tab_index(session_pid, ghostty_pid)
-  # Walk up from session_pid to find its direct-child-of-ghostty ancestor.
-  tab_root = nil
+# Walk from session_pid up to terminal_pid, returning the direct child of
+# terminal_pid — the shell spawned per tab (the "tab root").
+def find_tab_root(session_pid, terminal_pid)
   pid = session_pid
   8.times do
     stat = (File.read("/proc/#{pid}/stat").split rescue nil)
     break unless stat
     ppid = stat[3].to_i
-    if ppid == ghostty_pid
-      tab_root = pid
-      break
-    end
+    return pid if ppid == terminal_pid
     break if ppid <= 1
     pid = ppid
   end
-  return nil unless tab_root
+  nil
+end
 
-  # Collect all direct children of ghostty that have a controlling TTY —
-  # each represents one tab.  Sort by starttime (field 22, 1-indexed) so the
-  # index matches Ghostty's left-to-right tab order.
+# Ghostty: sort direct children with TTYs by starttime → 1-based tab index,
+# then send Alt+N via wtype (Ghostty's default goto_tab:N keybind).
+def ghostty_switch_tab(tab_root, ghostty_pid)
   tab_roots = []
   Dir["/proc/*/stat"].each do |f|
     parts = (File.read(f).split rescue nil)
@@ -77,25 +77,52 @@ def ghostty_tab_index(session_pid, ghostty_pid)
   tab_roots.sort_by! { |_, starttime| starttime }
 
   idx = tab_roots.index { |p, _| p == tab_root }
-  idx ? idx + 1 : nil
+  return unless idx
+
+  tab_idx = idx + 1
+  return unless tab_idx >= 1 && tab_idx <= 8
+
+  system "wtype", "-M", "alt", "-k", tab_idx.to_s
+end
+
+# Kitty: use `kitty @ ls` to find the tab containing tab_root by pid, then
+# switch to it.  Kitty's remote control must be enabled (allow_remote_control).
+def kitty_switch_tab(tab_root)
+  ls = JSON.parse(`kitty @ ls 2>/dev/null`) rescue return
+  ls.each do |os_window|
+    os_window["tabs"].each do |tab|
+      tab["windows"].each do |window|
+        if window["pid"] == tab_root
+          system "kitty", "@", "focus-tab", "--match", "id:#{tab["id"]}"
+          return
+        end
+      end
+    end
+  end
 end
 
 # Focus a session: bring its Hyprland window to front, then switch to the
-# correct Ghostty tab with wtype Alt+N.
+# correct tab within the terminal emulator (Ghostty or Kitty).
+# Alacritty has no tabs — window focus is sufficient.
 def focus_session(pid, windows)
   address = find_window_for_pid(pid, windows)
   return unless address
 
   system "hyprctl", "dispatch", "focuswindow", "address:#{address}"
 
-  ghostty_pid = find_ghostty_pid(pid)
-  return unless ghostty_pid
+  terminal = detect_terminal(pid)
+  return unless terminal
 
-  tab_idx = ghostty_tab_index(pid, ghostty_pid)
-  return unless tab_idx && tab_idx >= 1 && tab_idx <= 8
+  tab_root = find_tab_root(pid, terminal[:pid])
+  return unless tab_root
 
-  sleep 0.05 # let Hyprland complete the window focus before injecting key
-  system "wtype", "-M", "alt", "-k", tab_idx.to_s
+  sleep 0.05 # let Hyprland complete the window focus before injecting input
+
+  case terminal[:type]
+  when :ghostty   then ghostty_switch_tab(tab_root, terminal[:pid])
+  when :kitty     then kitty_switch_tab(tab_root)
+  when :alacritty then nil # no tabs — window focus is enough
+  end
 end
 
 # --- Color palette ----------------------------------------------------------

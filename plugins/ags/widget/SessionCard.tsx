@@ -7,22 +7,26 @@ interface SessionCardProps {
 }
 
 /**
- * Renders a single session card with:
- * - Left accent bar colored by status
- * - Name (bold), subagent count (purple), source badge, status label, relative time
- * - Second line: branch / context
+ * Renders a single session card matching cctop's two-row layout:
+ *
+ *   ▍  project-name  3 agents  CC         Permission
+ *      main  /  Allow Bash: npm test          just now
+ *
+ * - Left accent bar: full card height, colored by status
+ * - Row 1 left: name (bold), agent count (no brackets), source badge
+ * - Right column: status label (top, colored) + time (bottom, gray)
+ * - Row 2: branch / context (gray, indented past accent bar)
  */
 export default function SessionCard({ session, selected, onActivate }: SessionCardProps) {
   const s = session;
-  const bgCss = selected ? "background-color: #313244;" : "";
 
-  // Source badge color: CC = amber, OC = blue
+  // Source badge color: CC = amber, OC = blue — text only, no background
   const sourceBadgeColor = s.sourceLabel === "OC" ? "#89b4fa" : "#f9e2af";
 
-  // Subagent label (purple) — only shown when > 0
+  // Subagent label (purple) — no brackets, matches cctop screenshot
   const agentLabel =
     s.subagentCount > 0
-      ? `[${s.subagentCount} agent${s.subagentCount === 1 ? "" : "s"}]`
+      ? `${s.subagentCount} agent${s.subagentCount === 1 ? "" : "s"}`
       : "";
 
   // Second line: branch / context
@@ -32,77 +36,64 @@ export default function SessionCard({ session, selected, onActivate }: SessionCa
   return (
     <button
       cssClasses={["session-card", selected ? "selected" : ""]}
-      css={bgCss}
       onClicked={onActivate}
     >
-      <box orientation={1 /* VERTICAL */} spacing={0}>
-        {/* Row 1: accent bar + name + badges + status + time */}
-        <box orientation={0 /* HORIZONTAL */} spacing={0} cssClasses={["card-row1"]}>
-          {/* Left accent bar */}
-          <box
-            cssClasses={["accent-bar"]}
-            css={`background-color: ${s.statusColor}; min-width: 3px; min-height: 36px;`}
-          />
-          <box
-            orientation={0}
-            spacing={6}
-            hexpand={true}
-            css="padding: 4px 8px 2px 8px;"
-          >
-            {/* Project name */}
+      {/* Outer hbox: [accent-bar] [content-vbox] [right-vbox] */}
+      <box orientation={0} spacing={0}>
+
+        {/* Left accent bar — expands to full card height */}
+        <box
+          cssClasses={["accent-bar"]}
+          css={`background-color: ${s.statusColor}; min-width: 4px;`}
+          vexpand={true}
+        />
+
+        {/* Content: row1 (name/agents/source) + row2 (branch/context) */}
+        <box orientation={1} spacing={3} hexpand={true} css="padding: 6px 8px 6px 8px;">
+          {/* Row 1 */}
+          <box orientation={0} spacing={6}>
             <label
               label={s.displayName}
               cssClasses={["card-name"]}
               xalign={0}
-              css="font-weight: bold;"
             />
-
-            {/* Agent count (purple) */}
             {agentLabel !== "" && (
               <label
                 label={agentLabel}
                 cssClasses={["card-agents"]}
-                css="color: #cba6f7; font-size: 0.85em;"
               />
             )}
-
-            {/* Source badge */}
             <label
               label={s.sourceLabel}
               cssClasses={["card-source"]}
-              css={`color: ${sourceBadgeColor}; font-size: 0.8em; font-weight: bold;`}
-            />
-
-            {/* Spacer */}
-            <box hexpand={true} />
-
-            {/* Status label */}
-            <label
-              label={s.statusLabel}
-              cssClasses={["card-status"]}
-              css={`color: ${s.statusColor}; font-size: 0.85em;`}
-            />
-
-            {/* Relative time */}
-            <label
-              label={s.relativeTime}
-              cssClasses={["card-time"]}
-              css="color: #6c7086; font-size: 0.8em; margin-left: 8px;"
+              css={`color: ${sourceBadgeColor};`}
             />
           </box>
-        </box>
-
-        {/* Row 2: branch / context */}
-        <box orientation={0} css="padding: 0 8px 4px 19px;">
+          {/* Row 2: branch / context */}
           <label
             label={secondLine}
             cssClasses={["card-context"]}
-            css="color: #a6adc8; font-size: 0.82em;"
             xalign={0}
             ellipsize={3 /* END */}
             maxWidthChars={80}
           />
         </box>
+
+        {/* Right column: status (top) + time (bottom), right-aligned */}
+        <box orientation={1} spacing={2} css="padding: 6px 10px 6px 0; min-width: 80px;" valign={3 /* CENTER */}>
+          <label
+            label={s.statusLabel}
+            cssClasses={["card-status"]}
+            css={`color: ${s.statusColor};`}
+            xalign={1}
+          />
+          <label
+            label={s.relativeTime}
+            cssClasses={["card-time"]}
+            xalign={1}
+          />
+        </box>
+
       </box>
     </button>
   );

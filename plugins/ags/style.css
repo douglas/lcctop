@@ -53,7 +53,7 @@
 }
 
 .accent-bar {
-  min-width: 3px;
+  min-width: 4px;
   border-radius: 0;
 }
 
@@ -71,8 +71,6 @@
 .card-source {
   font-size: 0.78em;
   font-weight: bold;
-  padding: 0 4px;
-  border-radius: 3px;
 }
 
 .card-status {

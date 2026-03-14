@@ -1,0 +1,100 @@
+#!/usr/bin/env ruby
+# lcctop-pick: Show a walker dmenu of active sessions; focus the selected window.
+
+require "json"
+
+SESSIONS_DIR = File.expand_path("~/.cctop/sessions")
+
+STATUS_ICON = {
+  "waiting_permission" => "󰍉",
+  "waiting_input"      => "󰄭",
+  "needs_attention"    => "󰄭",
+  "working"            => "󰚩",
+  "compacting"         => "󰚩",
+  "idle"               => "󱙜",
+}.freeze
+
+def process_alive?(pid)
+  Process.kill(0, pid)
+  true
+rescue Errno::ESRCH
+  false
+rescue Errno::EPERM
+  true
+end
+
+def ppid_of(pid)
+  stat  = File.read("/proc/#{pid}/stat")
+  right = stat.rindex(")")
+  return nil unless right
+  stat[(right + 2)..].split[1].to_i
+rescue StandardError
+  nil
+end
+
+def hyprland_windows
+  JSON.parse(`hyprctl clients -j 2>/dev/null`)
+    .each_with_object({}) { |c, h| h[c["pid"].to_i] = c["address"] if c["pid"] }
+rescue StandardError
+  {}
+end
+
+def find_window_for_pid(pid, windows)
+  6.times do
+    return windows[pid] if windows.key?(pid)
+    parent = ppid_of(pid)
+    break if parent.nil? || parent <= 1
+    pid = parent
+  end
+  nil
+end
+
+# Load alive sessions sorted by priority
+sessions = Dir.glob(File.join(SESSIONS_DIR, "*.json")).filter_map do |path|
+  data = JSON.parse(File.read(path))
+  pid  = data["pid"]&.to_i
+  next unless pid && process_alive?(pid)
+  data
+rescue StandardError
+  nil
+end
+
+exit 0 if sessions.empty?
+
+# Auto-focus if only one session
+if sessions.size == 1
+  windows = hyprland_windows
+  address = find_window_for_pid(sessions.first["pid"].to_i, windows)
+  exec "hyprctl", "dispatch", "focuswindow", "address:#{address}" if address
+  exit 0
+end
+
+# Build display lines — one per session, include PID as hidden tag
+lines = sessions.map do |s|
+  icon   = STATUS_ICON.fetch(s["status"] || "idle", "󱙜")
+  name   = s["session_name"] || s["project_name"] || File.basename(s["project_path"].to_s)
+  source = s["source"] == "opencode" ? "OC" : "CC"
+  branch = s["branch"] || "unknown"
+  status = (s["status"] || "idle").tr("_", " ").capitalize
+  "#{icon}  #{name}  #{source}  #{branch}  —  #{status}\t#{s['pid']}"
+end
+
+# Pipe to walker dmenu; selected line is printed to stdout
+selected = IO.popen(["walker", "-d", "-p", "Focus session", "--nosearch"], "r+") do |io|
+  io.puts lines
+  io.close_write
+  io.read.chomp
+end
+
+exit 0 if selected.nil? || selected.empty?
+
+# Extract PID from tab-separated suffix
+pid = selected.split("\t").last.to_i
+exit 0 unless pid > 0
+
+windows = hyprland_windows
+address = find_window_for_pid(pid, windows)
+
+if address
+  exec "hyprctl", "dispatch", "focuswindow", "address:#{address}"
+end

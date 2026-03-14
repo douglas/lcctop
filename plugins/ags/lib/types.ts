@@ -61,7 +61,7 @@ export const STATUS_COLORS: Record<SessionStatus, string> = {
 
 export const STATUS_LABELS: Record<SessionStatus, string> = {
   waiting_permission: "Permission",
-  waiting_input: "Input",
+  waiting_input: "Waiting",
   needs_attention: "Attention",
   working: "Working",
   compacting: "Compacting",

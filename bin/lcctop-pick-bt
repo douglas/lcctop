@@ -95,12 +95,17 @@ end
 def focus_session(pid, windows)
   address = find_window_for_pid(pid, windows)
   return unless address
+
   system "hyprctl", "dispatch", "focuswindow", "address:#{address}"
+
   terminal = detect_terminal(pid)
   return unless terminal
+
   tab_root = find_tab_root(pid, terminal[:pid])
   return unless tab_root
+
   sleep 0.05
+
   case terminal[:type]
   when :ghostty   then ghostty_switch_tab(tab_root, terminal[:pid])
   when :kitty     then kitty_switch_tab(tab_root)
@@ -259,6 +264,13 @@ class PickModel
       when "up",   "k" then @selected_idx = [@selected_idx - 1, 0].max
       when "enter"
         @selected_pid = @sessions[@selected_idx]&.pid
+        if @selected_pid && @selected_pid > 0
+          pid = fork do
+            sleep 0.15
+            focus_session(@selected_pid, hyprland_windows)
+          end
+          Process.detach(pid)
+        end
         return [self, Bubbletea.quit]
       when "esc", "q", "ctrl+c"
         return [self, Bubbletea.quit]
@@ -315,12 +327,3 @@ exit 0 if sessions.empty?
 windows = hyprland_windows
 model   = PickModel.new(sessions, windows)
 Bubbletea.run(model, alt_screen: true)
-
-if model.selected_pid && model.selected_pid > 0
-  pid = fork do
-    # Let the picker window close first, then focus
-    sleep 0.15
-    focus_session(model.selected_pid, hyprland_windows)
-  end
-  Process.detach(pid)
-end

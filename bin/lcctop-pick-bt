@@ -316,4 +316,11 @@ windows = hyprland_windows
 model   = PickModel.new(sessions, windows)
 Bubbletea.run(model, alt_screen: true)
 
-focus_session(model.selected_pid, windows) if model.selected_pid && model.selected_pid > 0
+if model.selected_pid && model.selected_pid > 0
+  pid = fork do
+    # Let the picker window close first, then focus
+    sleep 0.15
+    focus_session(model.selected_pid, hyprland_windows)
+  end
+  Process.detach(pid)
+end

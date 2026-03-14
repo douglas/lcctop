@@ -378,4 +378,11 @@ R.run do |tui|
   end
 end
 
-focus_session(selected_pid, hyprland_windows) if selected_pid && selected_pid > 0
+if selected_pid && selected_pid > 0
+  pid = fork do
+    # Let the picker window close first, then focus
+    sleep 0.15
+    focus_session(selected_pid, hyprland_windows)
+  end
+  Process.detach(pid)
+end

@@ -2,7 +2,8 @@
 
 source "https://rubygems.org"
 
-# No runtime gem dependencies — stdlib only (json, fileutils, time).
+# Runtime: ratatui_ruby is required by bin/lcctop-pick for the TUI picker UI.
+gem "ratatui_ruby"
 
 group :development, :test do
   gem "minitest", ">= 5.0"

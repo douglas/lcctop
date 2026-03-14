@@ -1,36 +1,16 @@
 #!/usr/bin/env ruby
-# lcctop-pick: Show a walker dmenu of active sessions; focus the selected window.
+# frozen_string_literal: true
+# lcctop-pick: Beautiful TUI session picker.
+# Navigate with j/k or arrows · Enter to focus · Esc/q to cancel.
 
+$LOAD_PATH.unshift(File.join(__dir__, "..", "lib"))
+require "lcctop"
+require "ratatui_ruby"
 require "json"
 
-SESSIONS_DIR = File.expand_path("~/.cctop/sessions")
+include Lcctop
 
-STATUS_ICON = {
-  "waiting_permission" => "󰍉",
-  "waiting_input"      => "󰄭",
-  "needs_attention"    => "󰄭",
-  "working"            => "󰚩",
-  "compacting"         => "󰚩",
-  "idle"               => "󱙜",
-}.freeze
-
-def process_alive?(pid)
-  Process.kill(0, pid)
-  true
-rescue Errno::ESRCH
-  false
-rescue Errno::EPERM
-  true
-end
-
-def ppid_of(pid)
-  stat  = File.read("/proc/#{pid}/stat")
-  right = stat.rindex(")")
-  return nil unless right
-  stat[(right + 2)..].split[1].to_i
-rescue StandardError
-  nil
-end
+# --- Hyprland helpers -------------------------------------------------------
 
 def hyprland_windows
   JSON.parse(`hyprctl clients -j 2>/dev/null`)
@@ -42,59 +22,266 @@ end
 def find_window_for_pid(pid, windows)
   6.times do
     return windows[pid] if windows.key?(pid)
-    parent = ppid_of(pid)
+    parent = Session.ppid_of(pid)
     break if parent.nil? || parent <= 1
     pid = parent
   end
   nil
 end
 
-# Load alive sessions sorted by priority
-sessions = Dir.glob(File.join(SESSIONS_DIR, "*.json")).filter_map do |path|
-  data = JSON.parse(File.read(path))
-  pid  = data["pid"]&.to_i
-  next unless pid && process_alive?(pid)
-  data
-rescue StandardError
-  nil
+# --- Color palette (Catppuccin Mocha) ---------------------------------------
+
+C = {
+  red:      "#f38ba8",
+  amber:    "#f9e2af",
+  green:    "#a6e3a1",
+  blue:     "#89b4fa",
+  purple:   "#cba6f7",
+  gray:     "#6c7086",
+  subtext:  "#a6adc8",
+  overlay1: "#7f849c",
+  text:     "#cdd6f4",
+  base:     "#1e1e2e",
+  mantle:   "#181825",
+  surface0: "#313244",
+  surface1: "#45475a",
+}.freeze
+
+STATUS_COLOR = {
+  SessionStatus::WAITING_PERMISSION => C[:red],
+  SessionStatus::WAITING_INPUT      => C[:amber],
+  SessionStatus::NEEDS_ATTENTION    => C[:amber],
+  SessionStatus::WORKING            => C[:green],
+  SessionStatus::COMPACTING         => C[:blue],
+  SessionStatus::IDLE               => C[:gray],
+}.freeze
+
+STATUS_LABEL = {
+  SessionStatus::WAITING_PERMISSION => "Permission",
+  SessionStatus::WAITING_INPUT      => "Waiting",
+  SessionStatus::NEEDS_ATTENTION    => "Attention",
+  SessionStatus::WORKING            => "Working",
+  SessionStatus::COMPACTING         => "Compacting",
+  SessionStatus::IDLE               => "Idle",
+}.freeze
+
+R  = RatatuiRuby
+S  = R::Style::Style
+Sp = R::Text::Span
+Ln = R::Text::Line
+W  = R::Widgets
+Rt = R::Layout::Rect
+
+# --- Card rendering ---------------------------------------------------------
+
+def truncate(str, len)
+  s = str.to_s
+  s.length > len ? "#{s[0, len - 1]}…" : s
 end
 
+def make_line1(session, width, selected)
+  status  = session.status
+  color   = STATUS_COLOR.fetch(status, C[:gray])
+  label   = STATUS_LABEL.fetch(status, "Idle")
+  src     = session.source_label
+  src_clr = src == "OC" ? C[:blue] : C[:amber]
+  name    = truncate(session.display_name, 24)
+  time    = session.relative_time
+  bg      = selected ? C[:surface0] : nil
+
+  agents_str = session.subagent_count > 0 ? " [#{session.subagent_count}]" : ""
+
+  # Right-align the time: compute padding
+  left_plain  = "▍  #{name}#{agents_str}  #{src}  #{label}"
+  right_plain = "  #{time}  "
+  pad_len     = [width - left_plain.length - right_plain.length - 2, 1].max
+
+  Ln.new(spans: [
+    Sp.new(content: "▍", style: S.new(fg: color, bg: bg)),
+    Sp.new(content: "  #{name}", style: S.new(fg: C[:text], bg: bg, modifiers: [:bold])),
+    Sp.new(content: agents_str, style: S.new(fg: C[:purple], bg: bg)),
+    Sp.new(content: "  #{src}", style: S.new(fg: src_clr, bg: bg)),
+    Sp.new(content: "  #{label}", style: S.new(fg: color, bg: bg)),
+    Sp.new(content: " " * pad_len, style: S.new(bg: bg)),
+    Sp.new(content: "#{time}  ", style: S.new(fg: C[:overlay1], bg: bg)),
+  ])
+end
+
+def make_line2(session, width, selected)
+  bg      = selected ? C[:surface0] : nil
+  branch  = session.branch || "unknown"
+  context = session.context_line
+
+  detail = context ? "#{branch}  /  #{context}" : branch
+  detail = truncate(detail, width - 4)
+
+  Ln.new(spans: [
+    Sp.new(content: "   #{detail}", style: S.new(fg: C[:subtext], bg: bg)),
+    Sp.new(content: " " * [width - detail.length - 3, 0].max, style: S.new(bg: bg)),
+  ])
+end
+
+def make_separator(width, selected_above, selected_below)
+  color = (selected_above || selected_below) ? C[:surface1] : C[:surface0]
+  Ln.new(spans: [Sp.new(content: "─" * width, style: S.new(fg: color))])
+end
+
+def make_header(sessions, width)
+  perm    = sessions.count { |s| s.status == SessionStatus::WAITING_PERMISSION }
+  attn    = sessions.count { |s| [SessionStatus::WAITING_INPUT, SessionStatus::NEEDS_ATTENTION].include?(s.status) }
+  working = sessions.count { |s| [SessionStatus::WORKING, SessionStatus::COMPACTING].include?(s.status) }
+  idle    = sessions.count { |s| s.status == SessionStatus::IDLE }
+
+  dots = []
+  dots << Sp.new(content: "● #{perm}  ",  style: S.new(fg: C[:red]))    if perm    > 0
+  dots << Sp.new(content: "● #{attn}  ",  style: S.new(fg: C[:amber]))   if attn    > 0
+  dots << Sp.new(content: "● #{working}  ", style: S.new(fg: C[:green])) if working > 0
+  dots << Sp.new(content: "● #{idle}  ",  style: S.new(fg: C[:gray]))    if idle    > 0
+
+  spans = [
+    Sp.new(content: "  lcctop", style: S.new(fg: C[:text], modifiers: [:bold])),
+    Sp.new(content: "    ", style: S.new(fg: C[:subtext])),
+  ] + dots + [
+    Sp.new(content: " " * [width - 10 - dots.sum { |d| d.content.length } - 4, 0].max, style: S.new),
+  ]
+  Ln.new(spans:)
+end
+
+def make_footer(width)
+  hints = "  j/↓ next  k/↑ prev  enter focus  q/esc cancel"
+  Ln.new(spans: [
+    Sp.new(content: truncate(hints, width), style: S.new(fg: C[:gray])),
+  ])
+end
+
+# --- Session loading --------------------------------------------------------
+
+sessions = WaybarOutput.load_alive_sessions
 exit 0 if sessions.empty?
 
 # Auto-focus if only one session
 if sessions.size == 1
   windows = hyprland_windows
-  address = find_window_for_pid(sessions.first["pid"].to_i, windows)
+  address = find_window_for_pid(sessions.first.pid, windows)
   exec "hyprctl", "dispatch", "focuswindow", "address:#{address}" if address
   exit 0
 end
 
-# Build display lines — one per session, include PID as hidden tag
-lines = sessions.map do |s|
-  icon   = STATUS_ICON.fetch(s["status"] || "idle", "󱙜")
-  name   = s["session_name"] || s["project_name"] || File.basename(s["project_path"].to_s)
-  source = s["source"] == "opencode" ? "OC" : "CC"
-  branch = s["branch"] || "unknown"
-  status = (s["status"] || "idle").tr("_", " ").capitalize
-  "#{icon}  #{name}  #{source}  #{branch}  —  #{status}\t#{s['pid']}"
+# Pre-select the first session needing attention
+selected_idx = sessions.index { |s|
+  [SessionStatus::WAITING_PERMISSION, SessionStatus::WAITING_INPUT,
+   SessionStatus::NEEDS_ATTENTION].include?(s.status)
+} || 0
+
+selected_pid = nil
+
+# --- TUI loop ---------------------------------------------------------------
+
+R.run do |tui|
+  loop do
+    tui.draw do |frame|
+      area = frame.area
+      w    = area.width.to_i
+      h    = area.height.to_i
+
+      # Outer block (border + title)
+      outer = W::Block.new(
+        title:        " lcctop ",
+        borders:      :all,
+        border_style: S.new(fg: C[:surface1]),
+        title_style:  S.new(fg: C[:text], modifiers: [:bold]),
+      )
+      frame.render_widget(outer, Rt.new(x: area.x, y: area.y, width: w, height: h))
+
+      # Inner content area (inside border)
+      ix = area.x + 1
+      iy = area.y + 1
+      iw = w - 2
+      ih = h - 2
+
+      # Header row (status dots)
+      header_line = make_header(sessions, iw)
+      frame.render_widget(
+        W::Paragraph.new(text: header_line),
+        Rt.new(x: ix, y: iy, width: iw, height: 1)
+      )
+
+      # Separator under header
+      sep0 = Ln.new(spans: [Sp.new(content: "─" * iw, style: S.new(fg: C[:surface0]))])
+      frame.render_widget(
+        W::Paragraph.new(text: sep0),
+        Rt.new(x: ix, y: iy + 1, width: iw, height: 1)
+      )
+
+      # Session cards area: iy+2 .. iy+ih-2 (leave room for header+sep+footer)
+      cards_top  = iy + 2
+      cards_bot  = iy + ih - 2  # footer at iy+ih-1
+      cards_h    = cards_bot - cards_top
+
+      # Card height: 2 lines content + 1 separator = 3 rows
+      card_rows  = 3
+      visible_n  = cards_h / card_rows
+
+      # Scroll to keep selection visible
+      scroll_off = if selected_idx < visible_n
+                     0
+                   else
+                     selected_idx - visible_n + 1
+                   end
+
+      sessions.each_with_index do |s, i|
+        card_top = cards_top + (i - scroll_off) * card_rows
+        next if card_top < cards_top || card_top + card_rows > cards_bot + card_rows
+
+        sel = (i == selected_idx)
+
+        # Line 1: accent + name + source + status + time
+        frame.render_widget(
+          W::Paragraph.new(text: make_line1(s, iw, sel)),
+          Rt.new(x: ix, y: card_top, width: iw, height: 1)
+        )
+
+        # Line 2: branch / context
+        frame.render_widget(
+          W::Paragraph.new(text: make_line2(s, iw, sel)),
+          Rt.new(x: ix, y: card_top + 1, width: iw, height: 1)
+        )
+
+        # Separator (skip after last session)
+        next if i == sessions.size - 1
+        sel_below = (i + 1 == selected_idx)
+        frame.render_widget(
+          W::Paragraph.new(text: make_separator(iw, sel, sel_below)),
+          Rt.new(x: ix, y: card_top + 2, width: iw, height: 1)
+        )
+      end
+
+      # Footer: keyboard hints
+      frame.render_widget(
+        W::Paragraph.new(text: make_footer(iw)),
+        Rt.new(x: ix, y: iy + ih - 1, width: iw, height: 1)
+      )
+    end
+
+    event = tui.poll_event(timeout: nil)
+    next unless event.key?
+
+    case
+    when event.key_down? || event == "j"
+      selected_idx = [selected_idx + 1, sessions.size - 1].min
+    when event.key_up? || event == "k"
+      selected_idx = [selected_idx - 1, 0].max
+    when event.enter?
+      selected_pid = sessions[selected_idx]&.pid
+      break
+    when event.esc? || event == "q" || event.ctrl_c?
+      break
+    end
+  end
 end
 
-# Pipe to walker dmenu; selected line is printed to stdout
-selected = IO.popen(["walker", "-d", "-p", "Focus session", "--nosearch"], "r+") do |io|
-  io.puts lines
-  io.close_write
-  io.read.chomp
-end
-
-exit 0 if selected.nil? || selected.empty?
-
-# Extract PID from tab-separated suffix
-pid = selected.split("\t").last.to_i
-exit 0 unless pid > 0
-
-windows = hyprland_windows
-address = find_window_for_pid(pid, windows)
-
-if address
-  exec "hyprctl", "dispatch", "focuswindow", "address:#{address}"
+if selected_pid && selected_pid > 0
+  windows = hyprland_windows
+  address = find_window_for_pid(selected_pid, windows)
+  exec "hyprctl", "dispatch", "focuswindow", "address:#{address}" if address
 end

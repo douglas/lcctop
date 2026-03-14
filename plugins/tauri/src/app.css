@@ -1,0 +1,169 @@
+:root {
+  --base:     #1e1e2e;
+  --mantle:   #181825;
+  --surface0: #313244;
+  --surface1: #45475a;
+  --text:     #cdd6f4;
+  --subtext:  #a6adc8;
+  --overlay1: #7f849c;
+  --red:      #f38ba8;
+  --amber:    #f9e2af;
+  --green:    #a6e3a1;
+  --blue:     #89b4fa;
+  --purple:   #cba6f7;
+  --gray:     #6c7086;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: transparent;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  /* Prevent text selection on rapid keyboard nav */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Panel shell ───────────────────────────────────────────────────────────── */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: rgba(30, 30, 46, 0.92); /* --base with alpha */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 10px;
+  border: 1px solid rgba(69, 71, 90, 0.6); /* --surface1 */
+  overflow: hidden;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 9px;
+  background: rgba(24, 24, 37, 0.7); /* --mantle */
+  border-bottom: 1px solid rgba(69, 71, 90, 0.4);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  text-transform: lowercase;
+}
+
+.status-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.status-dot {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-dot .dot {
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* ── Session list ──────────────────────────────────────────────────────────── */
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+.session-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.session-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.session-list::-webkit-scrollbar-thumb {
+  background: var(--surface1);
+  border-radius: 2px;
+}
+
+.session-list::-webkit-scrollbar-thumb:hover {
+  background: var(--overlay1);
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────────── */
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--overlay1);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+
+.panel-footer {
+  padding: 7px 14px;
+  background: rgba(24, 24, 37, 0.7); /* --mantle */
+  border-top: 1px solid rgba(69, 71, 90, 0.4);
+  color: var(--overlay1);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kbd-hint span {
+  opacity: 0.75;
+}
+
+.kbd-sep {
+  color: var(--surface1);
+  margin: 0 2px;
+}

@@ -1,0 +1,33 @@
+[package]
+name = "lcctop-tauri"
+version = "0.1.0"
+edition = "2021"
+
+# Tauri generates the lib name from the package name with hyphens replaced by underscores.
+# lib.rs is found automatically.
+
+[lib]
+name = "lcctop_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "lcctop-tauri"
+path = "src/main.rs"
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "6"
+tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

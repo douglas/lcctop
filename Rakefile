@@ -68,7 +68,7 @@ task :install_plugin do
   # Claude Code does not auto-load hooks.json from local plugins —
   # hooks must be declared in settings.local.json directly.
   settings_path = File.expand_path("~/.claude/settings.local.json")
-  run_hook = "~/.claude/plugins/cctop/hooks/run-hook.sh"
+  run_hook = File.expand_path("~/.claude/plugins/cctop/hooks/run-hook.sh")
 
   settings = File.exist?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
   settings["hooks"] ||= {}

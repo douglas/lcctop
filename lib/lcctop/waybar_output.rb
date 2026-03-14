@@ -1,4 +1,5 @@
 require "json"
+require "cgi/escape"
 
 module Lcctop
   module WaybarOutput
@@ -32,6 +33,16 @@ module Lcctop
         .map { |s| adjust_display_status(s) }
         .then { |sessions| Session.sorted(sessions) }
     end
+
+    # Catppuccin Mocha palette — matches the CSS color variables in lcctop-waybar.css.tpl.
+    STATUS_COLOR = {
+      SessionStatus::WAITING_PERMISSION => "#f38ba8",  # red
+      SessionStatus::WAITING_INPUT      => "#f9e2af",  # amber
+      SessionStatus::NEEDS_ATTENTION    => "#f9e2af",  # amber
+      SessionStatus::WORKING            => "#a6e3a1",  # green
+      SessionStatus::COMPACTING         => "#89b4fa",  # blue
+      SessionStatus::IDLE               => "#6c7086",  # subtext0 (muted)
+    }.freeze
 
     # Maps session status to waybar CSS class (applied to #custom-lcctop).
     STATUS_CLASS = {
@@ -101,16 +112,31 @@ module Lcctop
     end
 
     def self.format_tooltip(sessions)
-      sessions.map { |s| session_tooltip_lines(s) }.join("\n\n")
+      sessions.map { |s| session_tooltip_lines(s) }.join("\n<span color=\"#313244\">────────────────────</span>\n")
     end
 
+    # Renders one session as two Pango-marked-up lines, mimicking cctop's card layout:
+    #
+    #   ▍ project-name  CC  [N agents]    STATUS  · just now
+    #     branch / context line
+    #
     def self.session_tooltip_lines(session)
       label  = STATUS_LABEL.fetch(session.status, session.status.upcase)
-      header = "#{session.display_name}  #{label}  #{session.branch}"
-      lines  = [header]
-      lines << session.context_line if session.context_line
-      lines << session.relative_time
-      lines.join("\n")
+      color  = STATUS_COLOR.fetch(session.status, "#6c7086")
+      border = %(<span color="#{color}">▍</span>)
+      source = %(<span color="#cba6f7">#{h session.source_label}</span>)
+      agents = session.subagent_count > 0 ?
+        %(  <span color="#cba6f7">#{session.subagent_count} agents</span>) : ""
+
+      name_part   = %(<b>#{h session.display_name}</b>  #{source}#{agents})
+      status_part = %(<span color="#{color}">#{label}</span>  <span color="#6c7086">#{h session.relative_time}</span>)
+      header      = "#{border} #{name_part}    #{status_part}"
+
+      branch_ctx  = h(session.branch)
+      branch_ctx += "  /  #{h session.context_line}" if session.context_line
+      detail      = %(  <span color="#6c7086">#{branch_ctx}</span>)
+
+      "#{header}\n#{detail}"
     end
 
     # --- Linux child PID enumeration ---
@@ -128,6 +154,8 @@ module Lcctop
         nil
       end
     end
+
+    private_class_method def self.h(str) = CGI.escapeHTML(str.to_s)
 
     private_class_method def self.dup_with_status(session, new_status)
       session.dup.tap { |s| s.status = new_status }

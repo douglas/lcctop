@@ -127,26 +127,6 @@ task :install_opencode do
   puts %|  "file://~/.config/opencode/plugins/cctop.js"|
 end
 
-desc "Copy AGS plugin to ~/.config/ags/lcctop/"
-task :install_ags do
-  dest = File.expand_path("~/.config/ags/lcctop")
-  src  = File.expand_path("plugins/ags", __dir__)
-  FileUtils.mkdir_p(File.dirname(dest))
-  FileUtils.cp_r(src, dest)
-  puts "Installed #{dest}"
-  puts
-  puts "To run: ags run ~/.config/ags/lcctop/app.ts"
-  puts "To bind in Hyprland: bind = SUPER, grave, exec, ags request 'toggle lcctop-picker'"
-end
-
-desc "Bundle AGS plugin with ags bundle"
-task :build_ags do
-  Dir.chdir(File.expand_path("plugins/ags", __dir__)) do
-    system "ags bundle app.tsx lcctop.js" or abort "ags bundle failed"
-  end
-  puts "Built plugins/ags/lcctop.js"
-end
-
 desc "Build Tauri panel app"
 task :build_tauri do
   Dir.chdir(File.expand_path("plugins/tauri", __dir__)) do

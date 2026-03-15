@@ -13,6 +13,10 @@ import { Session, STATUS_COLORS } from "./lib/types.js";
 // ---------------------------------------------------------------------------
 // Floating session picker window (700×450, layer=TOP, centered)
 // Key events handled at window level — GtkBox has no key-pressed signal
+//
+// Destroy + recreate on each open: GTK4's active-state tracking for
+// layer-shell surfaces doesn't survive hide/show cycles, causing "Broken
+// accounting of active state" warnings and stale keyboard focus on reopen.
 // ---------------------------------------------------------------------------
 
 function initialSelection(list: Session[]): number {
@@ -25,7 +29,19 @@ function initialSelection(list: Session[]): number {
   return idx >= 0 ? idx : 0;
 }
 
-function LcctopPickerWindow() {
+// Module-level tracker — null when picker is closed.
+let pickerWindow: Gtk.Widget | null = null;
+
+function closePicker() {
+  if (pickerWindow) {
+    (pickerWindow as any).destroy();
+    pickerWindow = null;
+  }
+}
+
+function openPicker() {
+  if (pickerWindow) return; // already open
+
   const [selectedIndex, setSelectedIndex] = createState(initialSelection(sessions.peek()));
 
   createEffect(() => {
@@ -35,15 +51,11 @@ function LcctopPickerWindow() {
     }
   });
 
-  function close() {
-    App.toggle_window("lcctop-picker");
-  }
-
   function activateSelected() {
     const list = sessions.peek();
     const session = list[selectedIndex.peek()];
     if (session) focusSession(session);
-    close();
+    closePicker();
   }
 
   function moveSelection(delta: number) {
@@ -55,24 +67,19 @@ function LcctopPickerWindow() {
   function attachControllers(win: unknown) {
     const w = win as { add_controller(c: unknown): void };
 
-    // CAPTURE phase: window intercepts key events before any child widget
-    // (GtkButtons etc.) gets a chance to process them.
-    // Astal.Keymode.EXCLUSIVE has the compositor grant keyboard focus to this
-    // surface; CAPTURE ensures GTK routes events here first.
-    // NOTE: do NOT call grab_focus() in notify::visible — that fires before the
-    // window is mapped, which corrupts GTK's focus state ("Broken accounting").
+    // CAPTURE phase: window intercepts key events before any child widget.
     const keyCtrl = new Gtk.EventControllerKey();
     (keyCtrl as any).propagation_phase = 1; // GTK_PHASE_CAPTURE
-    keyCtrl.connect("key-pressed", (_c: unknown, keyval: number) => handleKey(null, keyval));
+    keyCtrl.connect("key-pressed", (_c: unknown, keyval: number) => handleKey(keyval));
     w.add_controller(keyCtrl);
 
     // Click-to-close scrim via GestureClick
     const clickCtrl = new Gtk.GestureClick();
-    clickCtrl.connect("pressed", close);
+    clickCtrl.connect("pressed", closePicker);
     w.add_controller(clickCtrl);
   }
 
-  function handleKey(_widget: unknown, keyval: number): boolean {
+  function handleKey(keyval: number): boolean {
     const GDK_KEY = {
       j: 106, k: 107, q: 113,
       Return: 65293, KP_Enter: 65421,
@@ -83,12 +90,12 @@ function LcctopPickerWindow() {
       case GDK_KEY.j: case GDK_KEY.Down: moveSelection(1); return true;
       case GDK_KEY.k: case GDK_KEY.Up:   moveSelection(-1); return true;
       case GDK_KEY.Return: case GDK_KEY.KP_Enter: activateSelected(); return true;
-      case GDK_KEY.Escape: case GDK_KEY.q: close(); return true;
+      case GDK_KEY.Escape: case GDK_KEY.q: closePicker(); return true;
       default: return false;
     }
   }
 
-  return (
+  pickerWindow = (
     <window
       application={App}
       name="lcctop-picker"
@@ -103,7 +110,7 @@ function LcctopPickerWindow() {
       }
       exclusivity={Astal.Exclusivity.IGNORE}
       keymode={Astal.Keymode.EXCLUSIVE}
-      visible={false}
+      visible={true}
       onRealize={attachControllers}
     >
       {/* Transparent scrim — click outside picker to close */}
@@ -126,12 +133,12 @@ function LcctopPickerWindow() {
             selectedIndex={selectedIndex}
             setSelectedIndex={setSelectedIndex}
             onActivate={activateSelected}
-            onClose={close}
+            onClose={closePicker}
           />
         </box>
       </box>
     </window>
-  );
+  ) as unknown as Gtk.Widget;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +160,7 @@ function LcctopBarWindow() {
       visible={true}
       onRealize={(win: unknown) => {
         const clickCtrl = new Gtk.GestureClick();
-        clickCtrl.connect("pressed", () => App.toggle_window("lcctop-picker"));
+        clickCtrl.connect("pressed", () => pickerWindow ? closePicker() : openPicker());
         (win as { add_controller(c: unknown): void }).add_controller(clickCtrl);
       }}
     >
@@ -217,14 +224,13 @@ const cssPath = GLib.file_test(installedCss, GLib.FileTest.EXISTS) ? installedCs
 App.start({
   css: cssPath,
   main() {
-    LcctopPickerWindow();
     LcctopBarWindow();
   },
   requestHandler(args: string[], res: (response: string) => void) {
     const request = args[0] ?? "";
     switch (request) {
       case "toggle lcctop-picker":
-        App.toggle_window("lcctop-picker");
+        pickerWindow ? closePicker() : openPicker();
         res("ok");
         break;
       case "toggle lcctop-bar":

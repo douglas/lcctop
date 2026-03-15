@@ -1,4 +1,5 @@
 import GLib from "gi://GLib";
+import Gio from "gi://Gio";
 // @ts-ignore - no type stubs for Gtk4 in this project
 import Gtk from "gi://Gtk?version=4.0";
 import App from "ags/gtk4/app";
@@ -28,7 +29,12 @@ function LcctopBarWindow() {
       onRealize={(win: unknown) => {
         const clickCtrl = new Gtk.GestureClick();
         clickCtrl.connect("pressed", () => {
-          GLib.spawn_command_line_async("lcctop-panel");
+          // Use lcctop-pick until lcctop-panel (Tauri) is built and installed
+          try {
+            Gio.Subprocess.new(["lcctop-pick"], Gio.SubprocessFlags.NONE);
+          } catch (e) {
+            console.error("lcctop-pick failed:", e);
+          }
         });
         (win as { add_controller(c: unknown): void }).add_controller(clickCtrl);
       }}

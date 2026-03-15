@@ -13,15 +13,58 @@ include Lcctop
 # --- Hyprland helpers -------------------------------------------------------
 
 def hyprland_windows
-  JSON.parse(`hyprctl clients -j 2>/dev/null`)
-    .each_with_object({}) { |c, h| h[c["pid"].to_i] = c["address"] if c["pid"] }
+  windows = Hash.new { |h, k| h[k] = [] }
+  JSON.parse(`hyprctl clients -j 2>/dev/null`).each do |c|
+    next unless c["pid"]
+    windows[c["pid"].to_i] << { address: c["address"], stable_id: c["stableId"].to_i }
+  end
+  windows.each_value { |v| v.sort_by! { |w| w[:stable_id] } }
+  windows
 rescue StandardError
   {}
 end
 
-def find_window_for_pid(pid, windows)
+# Decode a Linux tty_nr to a /dev/pts/N path. Returns nil for non-PTY devices.
+def tty_nr_to_path(tty_nr)
+  return nil if tty_nr <= 0
+  major = (tty_nr >> 8) & 0xff
+  minor = (tty_nr & 0xff) | ((tty_nr >> 12) & 0xfff00)
+  "/dev/pts/#{minor}" if major == 136
+end
+
+# When multiple Ghostty windows share one PID, use TTY-based correlation to
+# identify which address belongs to the session's terminal window.
+# entries: [{address:, stable_id:}] sorted by stable_id ascending.
+def ghostty_resolve_address(ghostty_pid, entries, session_tty)
+  return entries.first[:address] if session_tty.nil? || session_tty.empty?
+
+  tab_roots = []
+  Dir["/proc/*/stat"].each do |f|
+    parts = (File.read(f).split rescue nil)
+    next unless parts
+    next unless parts[3].to_i == ghostty_pid
+    tty_path = tty_nr_to_path(parts[6].to_i)
+    next unless tty_path
+    tab_roots << { starttime: parts[21].to_i, tty: tty_path }
+  end
+  tab_roots.sort_by! { |r| r[:starttime] }
+
+  # 1:1 mapping only when counts match (one tab per window)
+  return entries.first[:address] unless tab_roots.size == entries.size
+
+  tab_roots.zip(entries).each do |root, entry|
+    return entry[:address] if root[:tty] == session_tty
+  end
+  entries.first[:address]
+end
+
+def find_window_for_pid(pid, windows, session_tty: nil)
   6.times do
-    return windows[pid] if windows.key?(pid)
+    if windows.key?(pid)
+      entries = windows[pid]
+      return entries.first[:address] if entries.size == 1
+      return ghostty_resolve_address(pid, entries, session_tty)
+    end
     parent = Session.ppid_of(pid)
     break if parent.nil? || parent <= 1
     pid = parent
@@ -65,7 +108,11 @@ end
 
 # Ghostty: sort direct children with TTYs by starttime → 1-based tab index,
 # then send Alt+N via wtype (Ghostty's default goto_tab:N keybind).
-def ghostty_switch_tab(tab_root, ghostty_pid)
+# window_count: number of Hyprland windows sharing ghostty_pid. When >1,
+# Alt+N is per-window (ambiguous), so we skip tab switching.
+def ghostty_switch_tab(tab_root, ghostty_pid, window_count)
+  return if window_count > 1
+
   tab_roots = []
   Dir["/proc/*/stat"].each do |f|
     parts = (File.read(f).split rescue nil)
@@ -104,8 +151,8 @@ end
 # Focus a session: bring its Hyprland window to front, then switch to the
 # correct tab within the terminal emulator (Ghostty or Kitty).
 # Alacritty has no tabs — window focus is sufficient.
-def focus_session(pid, windows)
-  address = find_window_for_pid(pid, windows)
+def focus_session(pid, windows, session_tty: nil)
+  address = find_window_for_pid(pid, windows, session_tty: session_tty)
   return unless address
 
   system "hyprctl", "dispatch", "focuswindow", "address:#{address}"
@@ -119,7 +166,9 @@ def focus_session(pid, windows)
   sleep 0.05 # let Hyprland complete the window focus before injecting input
 
   case terminal[:type]
-  when :ghostty   then ghostty_switch_tab(tab_root, terminal[:pid])
+  when :ghostty
+    window_count = windows[terminal[:pid]]&.size || 1
+    ghostty_switch_tab(tab_root, terminal[:pid], window_count)
   when :kitty     then kitty_switch_tab(tab_root)
   when :alacritty then nil # no tabs — window focus is enough
   end
@@ -271,7 +320,7 @@ selected_idx = sessions.index { |s|
    SessionStatus::NEEDS_ATTENTION].include?(s.status)
 } || 0
 
-selected_pid = nil
+selected_session = nil
 
 # --- TUI loop ---------------------------------------------------------------
 
@@ -370,7 +419,7 @@ R.run do |tui|
     when event.key_up? || event == "k"
       selected_idx = [selected_idx - 1, 0].max
     when event.enter?
-      selected_pid = sessions[selected_idx]&.pid
+      selected_session = sessions[selected_idx]
       break
     when event.esc? || event == "q" || event.ctrl_c?
       break
@@ -378,11 +427,13 @@ R.run do |tui|
   end
 end
 
-if selected_pid && selected_pid > 0
+if selected_session && selected_session.pid.to_i > 0
+  session_pid = selected_session.pid
+  session_tty = selected_session.terminal&.tty
   pid = fork do
     # Let the picker window close first, then focus
     sleep 0.15
-    focus_session(selected_pid, hyprland_windows)
+    focus_session(session_pid, hyprland_windows, session_tty: session_tty)
   end
   Process.detach(pid)
 end

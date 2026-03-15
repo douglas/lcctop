@@ -75,7 +75,7 @@
       case "Enter":
         e.preventDefault();
         if (selectedSession) {
-          focusSession(selectedSession.pid);
+          focusSession(selectedSession.pid, selectedSession.terminal?.tty);
         }
         break;
 
@@ -99,11 +99,11 @@
     });
   }
 
-  async function focusSession(pid: number) {
+  async function focusSession(pid: number, tty?: string | null) {
     await hideWindow();
     await new Promise(r => setTimeout(r, 150));
     try {
-      await invoke("focus_session", { pid });
+      await invoke("focus_session", { pid, tty: tty ?? null });
     } catch (err) {
       console.error("focus_session failed:", err);
     }

@@ -15,7 +15,7 @@ export interface Session {
   last_prompt: string | null;
   last_activity: string;
   started_at: string;
-  terminal: { type: string; pid: number } | null;
+  terminal: { program: string; tty: string | null } | null;
   pid: number;
   pid_start_time: number | null;
   last_tool: string | null;

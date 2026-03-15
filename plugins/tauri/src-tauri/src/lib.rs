@@ -276,12 +276,75 @@ fn kitty_find_tab(target_pid: u32) -> Option<u64> {
 
 // ── hyprctl window focus ────────────────────────────────────────────────────
 
+/// Decode a Linux tty_nr to a /dev/pts/N path. Returns None for non-PTY devices.
+fn tty_nr_to_path(tty_nr: i32) -> Option<String> {
+    if tty_nr <= 0 {
+        return None;
+    }
+    let tty_nr = tty_nr as u32;
+    let major = (tty_nr >> 8) & 0xff;
+    let minor = (tty_nr & 0xff) | ((tty_nr >> 12) & 0xfff00);
+    if major == 136 {
+        Some(format!("/dev/pts/{}", minor))
+    } else {
+        None
+    }
+}
+
+/// When multiple Ghostty windows share one PID, use TTY-based correlation to
+/// pick the window address that belongs to the session's terminal.
+/// addresses: [(address, stable_id)] sorted by stable_id ascending.
+fn ghostty_resolve_address(ghostty_pid: u32, addresses: &[(String, u64)], session_tty: &str) -> Option<String> {
+    if session_tty.is_empty() {
+        return addresses.first().map(|(a, _)| a.clone());
+    }
+
+    let proc_dir = Path::new("/proc");
+    let entries = match fs::read_dir(proc_dir) {
+        Ok(e) => e,
+        Err(_) => return addresses.first().map(|(a, _)| a.clone()),
+    };
+
+    let mut tab_roots: Vec<(u64, String)> = Vec::new(); // (starttime, tty_path)
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        let child_pid: u32 = match name_str.parse() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        if let Some(stat) = parse_proc_stat(child_pid) {
+            if stat.ppid == ghostty_pid {
+                if let Some(tty_path) = tty_nr_to_path(stat.tty_nr) {
+                    tab_roots.push((stat.starttime, tty_path));
+                }
+            }
+        }
+    }
+
+    tab_roots.sort_by_key(|(st, _)| *st);
+
+    // 1:1 mapping only when counts match (one tab per window)
+    if tab_roots.len() != addresses.len() {
+        return addresses.first().map(|(a, _)| a.clone());
+    }
+
+    for ((_, tty_path), (address, _)) in tab_roots.iter().zip(addresses.iter()) {
+        if tty_path == session_tty {
+            return Some(address.clone());
+        }
+    }
+
+    addresses.first().map(|(a, _)| a.clone())
+}
+
 /// Walk up the ppid chain from start_pid and find the window address in hyprctl clients.
-/// Mirrors the Ruby picker: build a pid→address map, then walk up one level at a time,
-/// returning the CLOSEST ancestor that is a known window. This correctly handles the case
-/// where multiple ghostty windows nest in the process tree (e.g. Window B opened from
-/// Window A) — we want the innermost match, not the first in the clients list.
-fn hyprctl_focus(start_pid: u32) -> bool {
+/// Mirrors the Ruby picker: build a pid→addresses map, then walk up one level at a time,
+/// returning the CLOSEST ancestor that is a known window. When multiple addresses share a
+/// PID (ghostty multi-window), use TTY-based correlation via session_tty.
+fn hyprctl_focus(start_pid: u32, session_tty: Option<&str>) -> bool {
     let output = match Command::new("hyprctl").args(["clients", "-j"]).output() {
         Ok(o) => o,
         Err(_) => return false,
@@ -298,22 +361,37 @@ fn hyprctl_focus(start_pid: u32) -> bool {
         None => return false,
     };
 
-    // Build a map of pid → window address from all hyprctl clients
-    let mut pid_to_address: std::collections::HashMap<u32, String> =
+    // Build a map of pid → [(address, stableId)] from all hyprctl clients
+    let mut pid_to_addresses: std::collections::HashMap<u32, Vec<(String, u64)>> =
         std::collections::HashMap::new();
     for client in clients_arr {
         if let (Some(client_pid), Some(address)) = (
             client.get("pid").and_then(|v| v.as_u64()),
             client.get("address").and_then(|v| v.as_str()),
         ) {
-            pid_to_address.insert(client_pid as u32, address.to_string());
+            let stable_id = client.get("stableId").and_then(|v| v.as_u64()).unwrap_or(0);
+            pid_to_addresses
+                .entry(client_pid as u32)
+                .or_default()
+                .push((address.to_string(), stable_id));
         }
+    }
+    // Sort each entry by stable_id ascending
+    for entries in pid_to_addresses.values_mut() {
+        entries.sort_by_key(|(_, sid)| *sid);
     }
 
     // Walk up the ancestor chain; return on the FIRST (closest) pid that is a known window
     let mut pid = start_pid;
     for _ in 0..32 {
-        if let Some(address) = pid_to_address.get(&pid) {
+        if let Some(entries) = pid_to_addresses.get(&pid) {
+            let address = if entries.len() == 1 {
+                entries[0].0.clone()
+            } else {
+                let tty = session_tty.unwrap_or("");
+                ghostty_resolve_address(pid, entries, tty)
+                    .unwrap_or_else(|| entries[0].0.clone())
+            };
             let _ = Command::new("hyprctl")
                 .args(["dispatch", "focuswindow", &format!("address:{}", address)])
                 .status();
@@ -390,9 +468,9 @@ pub fn list_sessions() -> Vec<Session> {
 }
 
 #[tauri::command]
-pub fn focus_session(pid: u32) {
-    // Step 1: Focus the window via hyprctl
-    hyprctl_focus(pid);
+pub fn focus_session(pid: u32, tty: Option<String>) {
+    // Step 1: Focus the window via hyprctl (use TTY for multi-window ghostty resolution)
+    hyprctl_focus(pid, tty.as_deref());
 
     // Step 2: Wait for Wayland focus to settle before sending keystrokes
     std::thread::sleep(std::time::Duration::from_millis(50));

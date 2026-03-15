@@ -53,11 +53,27 @@ function LcctopPickerWindow() {
   }
 
   function attachControllers(win: unknown) {
-    const w = win as { add_controller(c: unknown): void };
-    // Key events via EventControllerKey
+    const w = win as {
+      add_controller(c: unknown): void;
+      connect(signal: string, cb: () => void): number;
+      grab_focus(): boolean;
+      visible: boolean;
+    };
+
+    // Key events — CAPTURE phase so the window intercepts keys before child
+    // widgets (GtkButtons) can consume them.
     const keyCtrl = new Gtk.EventControllerKey();
+    (keyCtrl as any).propagation_phase = 1; // GTK_PHASE_CAPTURE
     keyCtrl.connect("key-pressed", (_c: unknown, keyval: number) => handleKey(null, keyval));
     w.add_controller(keyCtrl);
+
+    // Astal.Keymode.EXCLUSIVE grants Wayland keyboard focus, but GTK's own
+    // event routing also needs the window to have GTK-level focus.
+    // grab_focus() whenever the window is made visible.
+    w.connect("notify::visible", () => {
+      if (w.visible) w.grab_focus();
+    });
+
     // Click-to-close scrim via GestureClick
     const clickCtrl = new Gtk.GestureClick();
     clickCtrl.connect("pressed", close);

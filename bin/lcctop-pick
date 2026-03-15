@@ -429,8 +429,8 @@ end
 if selected_session && selected_session.pid.to_i > 0
   session_pid = selected_session.pid
   pid = fork do
-    # Let the picker window close first, then focus
-    sleep 0.15
+    Process.setsid # detach from controlling terminal so ghostty window close doesn't SIGHUP us
+    sleep 0.15 # let the picker window close before focusing
     focus_session(session_pid, hyprland_windows)
   end
   Process.detach(pid)

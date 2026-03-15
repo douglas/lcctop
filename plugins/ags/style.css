@@ -1,0 +1,27 @@
+.lcctop-bar-window {
+  background-color: transparent;
+}
+
+.bar-widget {
+  background-color: #1e1e2e;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.bar-widget:hover {
+  background-color: #313244;
+}
+
+.status-dot {
+  /* spacing handled via GTK spacing prop */
+}
+
+.dot-icon {
+  font-size: 0.7em;
+}
+
+.dot-count {
+  font-size: 0.82em;
+  font-weight: 600;
+}

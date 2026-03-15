@@ -2,15 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 // ── Session data model ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalInfo {
-    #[serde(rename = "type")]
-    pub terminal_type: String,
-    pub pid: u32,
+    pub program: String,
+    pub tty: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,11 +81,8 @@ fn is_process_alive(pid: u32) -> bool {
 // ── /proc stat field parsing ────────────────────────────────────────────────
 
 /// Parses /proc/{pid}/stat, returning a struct with the fields we need.
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct ProcStat {
-    pid: u32,
-    comm: String,
-    state: char,
     ppid: u32,
     tty_nr: i32,
     starttime: u64,
@@ -95,9 +91,7 @@ struct ProcStat {
 fn parse_proc_stat(pid: u32) -> Option<ProcStat> {
     let contents = fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
     // Find the comm field: everything between first '(' and last ')'
-    let open = contents.find('(')?;
     let close = contents.rfind(')')?;
-    let comm = contents[open + 1..close].to_string();
 
     let rest = &contents[close + 1..];
     let fields: Vec<&str> = rest.split_whitespace().collect();
@@ -108,20 +102,12 @@ fn parse_proc_stat(pid: u32) -> Option<ProcStat> {
     //   2 = pgrp
     //   3 = session
     //   4 = tty_nr
-    //  19 = starttime (index 21 overall, but 19 from after ')')
-    let state = fields.get(0)?.chars().next().unwrap_or('Z');
+    //  19 = starttime
     let ppid: u32 = fields.get(1)?.parse().ok()?;
     let tty_nr: i32 = fields.get(4)?.parse().ok()?;
     let starttime: u64 = fields.get(19)?.parse().ok()?;
 
-    Some(ProcStat {
-        pid,
-        comm,
-        state,
-        ppid,
-        tty_nr,
-        starttime,
-    })
+    Some(ProcStat { ppid, tty_nr, starttime })
 }
 
 /// Read the process name from /proc/{pid}/comm
@@ -139,7 +125,6 @@ fn read_comm(pid: u32) -> Option<String> {
 fn find_terminal_ancestor(start_pid: u32) -> Option<(String, u32, u32)> {
     let terminals = ["ghostty", "kitty", "alacritty", "wezterm", "foot"];
     let mut current = start_pid;
-    let mut child_of_terminal = current; // tracks the direct child of the terminal
 
     for _ in 0..32 {
         let stat = parse_proc_stat(current)?;
@@ -151,11 +136,11 @@ fn find_terminal_ancestor(start_pid: u32) -> Option<(String, u32, u32)> {
 
         for &term in &terminals {
             if parent_comm_lower.contains(term) {
-                return Some((term.to_string(), stat.ppid, child_of_terminal));
+                // `current` is the direct child of the terminal (the tab root)
+                return Some((term.to_string(), stat.ppid, current));
             }
         }
 
-        child_of_terminal = current;
         current = stat.ppid;
     }
     None
@@ -163,9 +148,43 @@ fn find_terminal_ancestor(start_pid: u32) -> Option<(String, u32, u32)> {
 
 // ── Ghostty tab focusing ────────────────────────────────────────────────────
 
+/// Count how many Hyprland windows share the given PID (ghostty single-process model
+/// means all windows report the same PID in `hyprctl clients -j`).
+fn count_windows_for_pid(pid: u32) -> usize {
+    let output = match Command::new("hyprctl").args(["clients", "-j"]).output() {
+        Ok(o) => o,
+        Err(_) => return 1,
+    };
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let clients: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return 1,
+    };
+    clients
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter(|c| {
+                    c.get("pid")
+                        .and_then(|v| v.as_u64())
+                        .map(|p| p == pid as u64)
+                        .unwrap_or(false)
+                })
+                .count()
+        })
+        .unwrap_or(1)
+}
+
 /// Find the 1-based tab index for `tab_root` among ghostty's direct children
 /// that have a controlling TTY, sorted by starttime ascending.
-fn ghostty_tab_index(ghostty_pid: u32, tab_root_pid: u32) -> Option<usize> {
+///
+/// `window_count` is the number of Hyprland windows sharing `ghostty_pid`.
+/// When >1, Alt+N is ambiguous (it's per-window, not global), so we return None
+/// to skip tab switching and rely on window focus alone.
+fn ghostty_tab_index(ghostty_pid: u32, tab_root_pid: u32, window_count: usize) -> Option<usize> {
+    if window_count > 1 {
+        return None;
+    }
     // Enumerate /proc/*/stat to find direct children of ghostty_pid with tty_nr != 0
     let proc_dir = Path::new("/proc");
     let entries = fs::read_dir(proc_dir).ok()?;
@@ -258,6 +277,10 @@ fn kitty_find_tab(target_pid: u32) -> Option<u64> {
 // ── hyprctl window focus ────────────────────────────────────────────────────
 
 /// Walk up the ppid chain from start_pid and find the window address in hyprctl clients.
+/// Mirrors the Ruby picker: build a pid→address map, then walk up one level at a time,
+/// returning the CLOSEST ancestor that is a known window. This correctly handles the case
+/// where multiple ghostty windows nest in the process tree (e.g. Window B opened from
+/// Window A) — we want the innermost match, not the first in the clients list.
 fn hyprctl_focus(start_pid: u32) -> bool {
     let output = match Command::new("hyprctl").args(["clients", "-j"]).output() {
         Ok(o) => o,
@@ -275,34 +298,39 @@ fn hyprctl_focus(start_pid: u32) -> bool {
         None => return false,
     };
 
-    // Build a set of PIDs in the ancestor chain
-    let mut ancestors = std::collections::HashSet::new();
-    let mut pid = start_pid;
-    for _ in 0..32 {
-        ancestors.insert(pid);
-        match parse_proc_stat(pid) {
-            Some(s) if s.ppid > 1 => pid = s.ppid,
-            _ => break,
+    // Build a map of pid → window address from all hyprctl clients
+    let mut pid_to_address: std::collections::HashMap<u32, String> =
+        std::collections::HashMap::new();
+    for client in clients_arr {
+        if let (Some(client_pid), Some(address)) = (
+            client.get("pid").and_then(|v| v.as_u64()),
+            client.get("address").and_then(|v| v.as_str()),
+        ) {
+            pid_to_address.insert(client_pid as u32, address.to_string());
         }
     }
 
-    // Find a hyprctl client whose pid is in our ancestor chain
-    for client in clients_arr {
-        if let Some(client_pid) = client.get("pid").and_then(|v| v.as_u64()) {
-            if ancestors.contains(&(client_pid as u32)) {
-                if let Some(address) = client.get("address").and_then(|v| v.as_str()) {
-                    let _ = Command::new("hyprctl")
-                        .args(["dispatch", "focuswindow", &format!("address:{}", address)])
-                        .status();
-                    return true;
-                }
-            }
+    // Walk up the ancestor chain; return on the FIRST (closest) pid that is a known window
+    let mut pid = start_pid;
+    for _ in 0..32 {
+        if let Some(address) = pid_to_address.get(&pid) {
+            let _ = Command::new("hyprctl")
+                .args(["dispatch", "focuswindow", &format!("address:{}", address)])
+                .status();
+            return true;
+        }
+        match parse_proc_stat(pid) {
+            Some(s) if s.ppid > 1 => pid = s.ppid,
+            _ => break,
         }
     }
     false
 }
 
 // ── Tauri commands ──────────────────────────────────────────────────────────
+
+mod commands {
+    use super::*;
 
 #[tauri::command]
 pub fn list_sessions() -> Vec<Session> {
@@ -366,11 +394,15 @@ pub fn focus_session(pid: u32) {
     // Step 1: Focus the window via hyprctl
     hyprctl_focus(pid);
 
-    // Step 2: Find the terminal ancestor and handle tab switching
+    // Step 2: Wait for Wayland focus to settle before sending keystrokes
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Step 3: Find the terminal ancestor and handle tab switching
     if let Some((terminal_name, terminal_pid, tab_root_pid)) = find_terminal_ancestor(pid) {
         match terminal_name.as_str() {
             "ghostty" => {
-                if let Some(tab_index) = ghostty_tab_index(terminal_pid, tab_root_pid) {
+                let window_count = count_windows_for_pid(terminal_pid);
+                if let Some(tab_index) = ghostty_tab_index(terminal_pid, tab_root_pid, window_count) {
                     // Use wtype to send Alt+N (1-based tab index)
                     let key = tab_index.to_string();
                     let _ = Command::new("wtype")
@@ -389,8 +421,8 @@ pub fn focus_session(pid: u32) {
                 }
             }
 
-            "alacritty" | "wezterm" | "foot" | _ => {
-                // No tab support (or wezterm handled via hyprctl above); window focus is sufficient
+            _ => {
+                // No tab support (alacritty, wezterm, foot, etc.); window focus is sufficient
             }
         }
     }
@@ -400,6 +432,8 @@ pub fn focus_session(pid: u32) {
 pub fn hide_window(window: tauri::Window) {
     window.hide().ok();
 }
+
+} // mod commands
 
 // ── File watcher ────────────────────────────────────────────────────────────
 
@@ -428,9 +462,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            list_sessions,
-            focus_session,
-            hide_window,
+            commands::list_sessions,
+            commands::focus_session,
+            commands::hide_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -466,28 +500,23 @@ fn watch_sessions_dir(path: PathBuf, app_handle: AppHandle) {
     // Debounce: emit at most once per 200ms burst of changes
     let debounce = Duration::from_millis(200);
 
-    loop {
-        match rx.recv() {
-            Ok(event) => {
-                // Only care about create/modify/remove events
-                let relevant = matches!(
-                    event.kind,
-                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-                );
-                if !relevant {
-                    continue;
-                }
+    while let Ok(event) = rx.recv() {
+        // Only care about create/modify/remove events
+        let relevant = matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        );
+        if !relevant {
+            continue;
+        }
 
-                // Drain any queued events within the debounce window
-                let _ = rx.recv_timeout(debounce);
-                while rx.try_recv().is_ok() {}
+        // Drain any queued events within the debounce window
+        let _ = rx.recv_timeout(debounce);
+        while rx.try_recv().is_ok() {}
 
-                // Emit to all windows
-                if let Err(e) = app_handle.emit("sessions-changed", ()) {
-                    eprintln!("lcctop-tauri: failed to emit event: {}", e);
-                }
-            }
-            Err(_) => break,
+        // Emit to all windows
+        if let Err(e) = app_handle.emit("sessions-changed", ()) {
+            eprintln!("lcctop-tauri: failed to emit event: {}", e);
         }
     }
 }

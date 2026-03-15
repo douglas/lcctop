@@ -45,11 +45,11 @@ def ghostty_resolve_address(ghostty_pid, tab_root_pid, entries)
   end
   tab_roots.sort_by! { |_, starttime| starttime }
 
-  # 1:1 mapping only when counts match (one tab per window)
-  return entries.first[:address] unless tab_roots.size == entries.size
+  return entries.first[:address] if tab_roots.empty?
 
   idx = tab_roots.index { |pid, _| pid == tab_root_pid }
   return entries.first[:address] unless idx
+  return entries.first[:address] unless idx < entries.size
 
   entries[idx][:address] # entries already sorted by stable_id
 end

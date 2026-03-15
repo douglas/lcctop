@@ -317,11 +317,6 @@ fn ghostty_resolve_address(ghostty_pid: u32, tab_root_pid: u32, addresses: &[(St
 
     tab_roots.sort_by_key(|(st, _)| *st);
 
-    // 1:1 mapping only when counts match (one tab per window)
-    if tab_roots.len() != addresses.len() {
-        return addresses.first().map(|(a, _)| a.clone());
-    }
-
     // Find position of our tab root in the starttime-ordered list
     if let Some(idx) = tab_roots.iter().position(|(_, pid)| *pid == tab_root_pid) {
         addresses.get(idx).map(|(a, _)| a.clone())

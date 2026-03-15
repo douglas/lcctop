@@ -127,7 +127,7 @@ task :install_opencode do
   puts %|  "file://~/.config/opencode/plugins/cctop.js"|
 end
 
-desc "Copy AGS bar widget to ~/.config/ags/lcctop/"
+desc "Copy AGS picker + bar widget to ~/.config/ags/lcctop/"
 task :install_ags do
   dest = File.expand_path("~/.config/ags/lcctop")
   src  = File.expand_path("plugins/ags", __dir__)
@@ -136,6 +136,7 @@ task :install_ags do
   puts "Installed #{dest}"
   puts
   puts "To run: ags run ~/.config/ags/lcctop/app.tsx --gtk 4"
+  puts "To toggle picker: ags request 'toggle lcctop-picker'"
 end
 
 desc "Build Tauri panel app"

@@ -1,16 +1,91 @@
-.lcctop-bar-window {
+/* Catppuccin Mocha */
+
+.lcctop-picker-window {
   background-color: transparent;
 }
 
-.bar-widget {
+.picker-container {
   background-color: #1e1e2e;
   border: 1px solid #45475a;
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 10px;
 }
 
-.bar-widget:hover {
+.session-picker {
+  background-color: #1e1e2e;
+  border-radius: 10px;
+  outline: none;
+}
+
+.picker-header {
+  background-color: #181825;
+  border-radius: 10px 10px 0 0;
+  border-bottom: 1px solid #313244;
+}
+
+.header-title {
+  font-weight: bold;
+  color: #cdd6f4;
+  font-size: 1em;
+}
+
+.picker-scroll {
+  background-color: #1e1e2e;
+}
+
+.session-card {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  transition: background-color 100ms ease;
+}
+
+.session-card:hover {
+  background-color: rgba(49, 50, 68, 0.6);
+}
+
+.session-card.selected {
   background-color: #313244;
+}
+
+.session-card:focus {
+  outline: none;
+}
+
+.accent-bar {
+  min-width: 4px;
+  border-radius: 0;
+}
+
+.card-name {
+  font-weight: bold;
+  color: #cdd6f4;
+  font-size: 0.95em;
+}
+
+.card-agents {
+  color: #cba6f7;
+  font-size: 0.82em;
+}
+
+.card-source {
+  font-size: 0.78em;
+  font-weight: bold;
+}
+
+.card-status {
+  font-size: 0.82em;
+  font-weight: 600;
+}
+
+.card-time {
+  color: #6c7086;
+  font-size: 0.78em;
+}
+
+.card-context {
+  color: #a6adc8;
+  font-size: 0.8em;
 }
 
 .status-dot {
@@ -24,4 +99,25 @@
 .dot-count {
   font-size: 0.82em;
   font-weight: 600;
+}
+
+.picker-footer {
+  background-color: #181825;
+  border-radius: 0 0 10px 10px;
+  border-top: 1px solid #313244;
+}
+
+.lcctop-bar-window {
+  background-color: transparent;
+}
+
+.bar-widget {
+  background-color: #1e1e2e;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.bar-widget:hover {
+  background-color: #313244;
 }

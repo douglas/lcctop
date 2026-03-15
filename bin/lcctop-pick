@@ -16,7 +16,8 @@ def hyprland_windows
   windows = Hash.new { |h, k| h[k] = [] }
   JSON.parse(`hyprctl clients -j 2>/dev/null`).each do |c|
     next unless c["pid"]
-    windows[c["pid"].to_i] << { address: c["address"], stable_id: c["stableId"].to_i }
+    # stableId is a hex string (e.g. "1800017d") — must parse as base 16
+    windows[c["pid"].to_i] << { address: c["address"], stable_id: c["stableId"].to_i(16) }
   end
   windows.each_value { |v| v.sort_by! { |w| w[:stable_id] } }
   windows
@@ -24,46 +25,44 @@ rescue StandardError
   {}
 end
 
-# Decode a Linux tty_nr to a /dev/pts/N path. Returns nil for non-PTY devices.
-def tty_nr_to_path(tty_nr)
-  return nil if tty_nr <= 0
-  major = (tty_nr >> 8) & 0xff
-  minor = (tty_nr & 0xff) | ((tty_nr >> 12) & 0xfff00)
-  "/dev/pts/#{minor}" if major == 136
-end
-
-# When multiple Ghostty windows share one PID, use TTY-based correlation to
-# identify which address belongs to the session's terminal window.
-# entries: [{address:, stable_id:}] sorted by stable_id ascending.
-def ghostty_resolve_address(ghostty_pid, entries, session_tty)
-  return entries.first[:address] if session_tty.nil? || session_tty.empty?
+# When multiple Ghostty windows share one PID, use the tab_root_pid (direct
+# child of ghostty that is an ancestor of the session process) to identify
+# which Hyprland window address belongs to that session.
+#
+# Strategy: sort ghostty's tty-owning children by starttime (oldest = window 1)
+# and sort entries by stableId (lowest = window 1). Both increase monotonically
+# with window creation order, so the i-th tab root maps to the i-th address.
+def ghostty_resolve_address(ghostty_pid, tab_root_pid, entries)
+  return entries.first[:address] unless tab_root_pid
 
   tab_roots = []
   Dir["/proc/*/stat"].each do |f|
     parts = (File.read(f).split rescue nil)
     next unless parts
     next unless parts[3].to_i == ghostty_pid
-    tty_path = tty_nr_to_path(parts[6].to_i)
-    next unless tty_path
-    tab_roots << { starttime: parts[21].to_i, tty: tty_path }
+    next if parts[6].to_i == 0 # no controlling TTY → not a tab shell
+    tab_roots << [parts[0].to_i, parts[21].to_i] # [pid, starttime]
   end
-  tab_roots.sort_by! { |r| r[:starttime] }
+  tab_roots.sort_by! { |_, starttime| starttime }
 
   # 1:1 mapping only when counts match (one tab per window)
   return entries.first[:address] unless tab_roots.size == entries.size
 
-  tab_roots.zip(entries).each do |root, entry|
-    return entry[:address] if root[:tty] == session_tty
-  end
-  entries.first[:address]
+  idx = tab_roots.index { |pid, _| pid == tab_root_pid }
+  return entries.first[:address] unless idx
+
+  entries[idx][:address] # entries already sorted by stable_id
 end
 
-def find_window_for_pid(pid, windows, session_tty: nil)
+def find_window_for_pid(session_pid, windows)
+  pid = session_pid
   6.times do
     if windows.key?(pid)
       entries = windows[pid]
       return entries.first[:address] if entries.size == 1
-      return ghostty_resolve_address(pid, entries, session_tty)
+      # Multiple windows sharing this PID (ghostty): use tab root to identify window
+      tab_root = find_tab_root(session_pid, pid)
+      return ghostty_resolve_address(pid, tab_root, entries)
     end
     parent = Session.ppid_of(pid)
     break if parent.nil? || parent <= 1
@@ -151,8 +150,8 @@ end
 # Focus a session: bring its Hyprland window to front, then switch to the
 # correct tab within the terminal emulator (Ghostty or Kitty).
 # Alacritty has no tabs — window focus is sufficient.
-def focus_session(pid, windows, session_tty: nil)
-  address = find_window_for_pid(pid, windows, session_tty: session_tty)
+def focus_session(pid, windows)
+  address = find_window_for_pid(pid, windows)
   return unless address
 
   system "hyprctl", "dispatch", "focuswindow", "address:#{address}"
@@ -429,11 +428,10 @@ end
 
 if selected_session && selected_session.pid.to_i > 0
   session_pid = selected_session.pid
-  session_tty = selected_session.terminal&.tty
   pid = fork do
     # Let the picker window close first, then focus
     sleep 0.15
-    focus_session(session_pid, hyprland_windows, session_tty: session_tty)
+    focus_session(session_pid, hyprland_windows)
   end
   Process.detach(pid)
 end

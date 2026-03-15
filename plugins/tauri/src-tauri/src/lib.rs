@@ -276,38 +276,27 @@ fn kitty_find_tab(target_pid: u32) -> Option<u64> {
 
 // ── hyprctl window focus ────────────────────────────────────────────────────
 
-/// Decode a Linux tty_nr to a /dev/pts/N path. Returns None for non-PTY devices.
-fn tty_nr_to_path(tty_nr: i32) -> Option<String> {
-    if tty_nr <= 0 {
-        return None;
-    }
-    let tty_nr = tty_nr as u32;
-    let major = (tty_nr >> 8) & 0xff;
-    let minor = (tty_nr & 0xff) | ((tty_nr >> 12) & 0xfff00);
-    if major == 136 {
-        Some(format!("/dev/pts/{}", minor))
-    } else {
-        None
-    }
-}
-
-/// When multiple Ghostty windows share one PID, use TTY-based correlation to
-/// pick the window address that belongs to the session's terminal.
-/// addresses: [(address, stable_id)] sorted by stable_id ascending.
-fn ghostty_resolve_address(ghostty_pid: u32, addresses: &[(String, u64)], session_tty: &str) -> Option<String> {
-    if session_tty.is_empty() {
+/// When multiple Ghostty windows share one PID, use the tab_root_pid (direct
+/// child of ghostty that is an ancestor of the session process) to identify
+/// the correct Hyprland window address.
+///
+/// Strategy: sort ghostty's tty-owning children by starttime (oldest = window 1)
+/// and sort addresses by stableId (lowest = window 1). Both increase monotonically
+/// with window creation order, so the i-th tab root maps to the i-th address.
+fn ghostty_resolve_address(ghostty_pid: u32, tab_root_pid: u32, addresses: &[(String, u64)]) -> Option<String> {
+    if tab_root_pid == 0 {
         return addresses.first().map(|(a, _)| a.clone());
     }
 
     let proc_dir = Path::new("/proc");
-    let entries = match fs::read_dir(proc_dir) {
+    let proc_entries = match fs::read_dir(proc_dir) {
         Ok(e) => e,
         Err(_) => return addresses.first().map(|(a, _)| a.clone()),
     };
 
-    let mut tab_roots: Vec<(u64, String)> = Vec::new(); // (starttime, tty_path)
+    let mut tab_roots: Vec<(u64, u32)> = Vec::new(); // (starttime, pid)
 
-    for entry in entries.flatten() {
+    for entry in proc_entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         let child_pid: u32 = match name_str.parse() {
@@ -316,12 +305,14 @@ fn ghostty_resolve_address(ghostty_pid: u32, addresses: &[(String, u64)], sessio
         };
 
         if let Some(stat) = parse_proc_stat(child_pid) {
-            if stat.ppid == ghostty_pid {
-                if let Some(tty_path) = tty_nr_to_path(stat.tty_nr) {
-                    tab_roots.push((stat.starttime, tty_path));
-                }
+            if stat.ppid == ghostty_pid && stat.tty_nr != 0 {
+                tab_roots.push((stat.starttime, child_pid));
             }
         }
+    }
+
+    if tab_roots.is_empty() {
+        return addresses.first().map(|(a, _)| a.clone());
     }
 
     tab_roots.sort_by_key(|(st, _)| *st);
@@ -331,20 +322,18 @@ fn ghostty_resolve_address(ghostty_pid: u32, addresses: &[(String, u64)], sessio
         return addresses.first().map(|(a, _)| a.clone());
     }
 
-    for ((_, tty_path), (address, _)) in tab_roots.iter().zip(addresses.iter()) {
-        if tty_path == session_tty {
-            return Some(address.clone());
-        }
+    // Find position of our tab root in the starttime-ordered list
+    if let Some(idx) = tab_roots.iter().position(|(_, pid)| *pid == tab_root_pid) {
+        addresses.get(idx).map(|(a, _)| a.clone())
+    } else {
+        addresses.first().map(|(a, _)| a.clone())
     }
-
-    addresses.first().map(|(a, _)| a.clone())
 }
 
 /// Walk up the ppid chain from start_pid and find the window address in hyprctl clients.
-/// Mirrors the Ruby picker: build a pid→addresses map, then walk up one level at a time,
-/// returning the CLOSEST ancestor that is a known window. When multiple addresses share a
-/// PID (ghostty multi-window), use TTY-based correlation via session_tty.
-fn hyprctl_focus(start_pid: u32, session_tty: Option<&str>) -> bool {
+/// When multiple addresses share a PID (ghostty multi-window), use tab_root_pid
+/// (direct child of ghostty that is ancestor of start_pid) for correlation.
+fn hyprctl_focus(start_pid: u32, tab_root_pid: Option<u32>) -> bool {
     let output = match Command::new("hyprctl").args(["clients", "-j"]).output() {
         Ok(o) => o,
         Err(_) => return false,
@@ -361,7 +350,8 @@ fn hyprctl_focus(start_pid: u32, session_tty: Option<&str>) -> bool {
         None => return false,
     };
 
-    // Build a map of pid → [(address, stableId)] from all hyprctl clients
+    // Build a map of pid → [(address, stableId)] from all hyprctl clients.
+    // stableId is a hex string (e.g. "1800017d") — parse as base 16.
     let mut pid_to_addresses: std::collections::HashMap<u32, Vec<(String, u64)>> =
         std::collections::HashMap::new();
     for client in clients_arr {
@@ -369,7 +359,11 @@ fn hyprctl_focus(start_pid: u32, session_tty: Option<&str>) -> bool {
             client.get("pid").and_then(|v| v.as_u64()),
             client.get("address").and_then(|v| v.as_str()),
         ) {
-            let stable_id = client.get("stableId").and_then(|v| v.as_u64()).unwrap_or(0);
+            let stable_id = client
+                .get("stableId")
+                .and_then(|v| v.as_str())
+                .and_then(|s| u64::from_str_radix(s, 16).ok())
+                .unwrap_or(0);
             pid_to_addresses
                 .entry(client_pid as u32)
                 .or_default()
@@ -388,8 +382,7 @@ fn hyprctl_focus(start_pid: u32, session_tty: Option<&str>) -> bool {
             let address = if entries.len() == 1 {
                 entries[0].0.clone()
             } else {
-                let tty = session_tty.unwrap_or("");
-                ghostty_resolve_address(pid, entries, tty)
+                ghostty_resolve_address(pid, tab_root_pid.unwrap_or(0), entries)
                     .unwrap_or_else(|| entries[0].0.clone())
             };
             let _ = Command::new("hyprctl")
@@ -468,15 +461,19 @@ pub fn list_sessions() -> Vec<Session> {
 }
 
 #[tauri::command]
-pub fn focus_session(pid: u32, tty: Option<String>) {
-    // Step 1: Focus the window via hyprctl (use TTY for multi-window ghostty resolution)
-    hyprctl_focus(pid, tty.as_deref());
+pub fn focus_session(pid: u32) {
+    // Find terminal ancestor first so tab_root_pid is available for window resolution
+    let terminal_info = find_terminal_ancestor(pid);
+    let tab_root_pid = terminal_info.as_ref().map(|(_, _, tr)| *tr);
+
+    // Step 1: Focus the correct window via hyprctl
+    hyprctl_focus(pid, tab_root_pid);
 
     // Step 2: Wait for Wayland focus to settle before sending keystrokes
     std::thread::sleep(std::time::Duration::from_millis(50));
 
-    // Step 3: Find the terminal ancestor and handle tab switching
-    if let Some((terminal_name, terminal_pid, tab_root_pid)) = find_terminal_ancestor(pid) {
+    // Step 3: Handle tab switching using the already-computed terminal info
+    if let Some((terminal_name, terminal_pid, tab_root_pid)) = terminal_info {
         match terminal_name.as_str() {
             "ghostty" => {
                 let window_count = count_windows_for_pid(terminal_pid);

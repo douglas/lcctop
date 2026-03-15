@@ -100,12 +100,13 @@
   }
 
   async function focusSession(pid: number) {
+    await hideWindow();
+    await new Promise(r => setTimeout(r, 150));
     try {
       await invoke("focus_session", { pid });
     } catch (err) {
       console.error("focus_session failed:", err);
     }
-    await hideWindow();
   }
 
   async function hideWindow() {

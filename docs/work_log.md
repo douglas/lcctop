@@ -133,9 +133,9 @@
 - **Description:** Replace the AGS/Astal TypeScript picker with a pure Python GTK4 + gtk4-layer-shell app (no reactive framework). Add status dots with counts to the waybar module text. Phases: (1) colors.py + sessions.py + focus.py, (2) style.css + widgets.py + picker.py, (3) bin/lcctop-pick-gtk + Rakefile + AGS simplification, (4) waybar dot enhancement.
 
 ## Feature: Fix global hooks — move from settings.local.json to settings.json
-- **Status:** open
+- **Status:** closed
 - **Started:** 2026-03-16T03:10:00Z
-- **Closed:** —
+- **Closed:** 2026-03-16T03:20:00Z
 - **Description:** rake install_plugin wrote lcctop hooks to ~/.claude/settings.local.json, which does not fire globally. Only ~/.claude/settings.json is truly global. Update install_plugin to write hooks there (following the symlink into private dotfiles) and clean up the duplicate entries from settings.local.json.
 
 ## Feature: Fix Waybar Icon Not Updating + Add Colored Dots

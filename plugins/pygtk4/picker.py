@@ -229,13 +229,15 @@ class PickerApp(Gtk.Application):
         if not self._sessions:
             return
         session = self._sessions[self._selected]
-        self._close()
-        # Small delay: let the window close before focusing the target window.
-        GLib.timeout_add(150, lambda: self._do_focus(session))
+        # hold() keeps the main loop alive after the window is destroyed,
+        # so the timeout callback fires. release() in _focus_and_quit lets the app exit.
+        self.hold()
+        self._teardown_window()
+        GLib.timeout_add(150, lambda: self._focus_and_quit(session))
 
-    @staticmethod
-    def _do_focus(session: dict) -> bool:
+    def _focus_and_quit(self, session: dict) -> bool:
         focus_session(session)
+        self.release()
         return GLib.SOURCE_REMOVE
 
     # ------------------------------------------------------------------
@@ -265,15 +267,17 @@ class PickerApp(Gtk.Application):
     # Close
     # ------------------------------------------------------------------
 
-    def _close(self) -> None:
+    def _teardown_window(self) -> None:
         if self._refresh_timer is not None:
             timer_id, self._refresh_timer = self._refresh_timer, None
             GLib.source_remove(timer_id)
 
         if self._window is not None:
             self._window.destroy()
-            self._window    = None
-            self._list_box  = None
+            self._window     = None
+            self._list_box   = None
             self._card_boxes = []
 
+    def _close(self) -> None:
+        self._teardown_window()
         self.quit()

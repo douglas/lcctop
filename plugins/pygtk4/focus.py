@@ -262,7 +262,10 @@ def focus_session(session: dict) -> None:
     pid     = session.get("pid")
     clients = hyprctl_clients()
 
-    address = find_hypr_window_address(pid, clients)
+    # Prefer the saved Hyprland address (captured at SessionStart, always correct).
+    # Fall back to process-tree resolution for sessions without a saved address.
+    terminal = session.get("terminal") or {}
+    address  = terminal.get("hypr_address") or find_hypr_window_address(pid, clients)
     if address:
         subprocess.run(["hyprctl", "dispatch", "focuswindow", f"address:{address}"])
 

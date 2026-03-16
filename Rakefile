@@ -64,7 +64,7 @@ task :install_theme do
   end
 end
 
-desc "Install cctop plugin into ~/.claude/plugins/ and register hooks in settings.local.json"
+desc "Install cctop plugin into ~/.claude/plugins/ and register hooks in settings.json"
 task :install_plugin do
   plugins_dir = File.expand_path("~/.claude/plugins")
   src  = File.expand_path("plugins/cctop", __dir__)
@@ -73,11 +73,24 @@ task :install_plugin do
   FileUtils.ln_sf(src, dest)
   puts "Linked #{dest} -> #{src}"
 
-  # Register hooks in settings.local.json.
-  # Claude Code does not auto-load hooks.json from local plugins —
-  # hooks must be declared in settings.local.json directly.
-  settings_path = File.expand_path("~/.claude/settings.local.json")
+  # Register hooks in ~/.claude/settings.json (the truly global user settings file).
+  # ~/.claude/settings.local.json is NOT global — it only applies to the ~/.claude/ project.
+  # ~/.claude/settings.json follows a symlink into private dotfiles; File.write follows it.
+  settings_path = File.expand_path("~/.claude/settings.json")
   run_hook = File.expand_path("~/.claude/plugins/cctop/hooks/run-hook.sh")
+
+  # Clean up any stale lcctop hooks previously written to settings.local.json.
+  local_path = File.expand_path("~/.claude/settings.local.json")
+  if File.exist?(local_path)
+    local = JSON.parse(File.read(local_path))
+    if local["hooks"]
+      local["hooks"].each_value { |entries| entries.reject! { |e| e["hooks"]&.any? { |h| h["command"].to_s.include?("run-hook.sh") } } }
+      local["hooks"].reject! { |_, v| v.empty? }
+      local.delete("hooks") if local["hooks"].empty?
+    end
+    File.write(local_path, JSON.pretty_generate(local) + "\n")
+    puts "Cleaned up stale lcctop hooks from #{local_path}"
+  end
 
   settings = File.exist?(settings_path) ? JSON.parse(File.read(settings_path)) : {}
   settings["hooks"] ||= {}

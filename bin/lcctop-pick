@@ -150,8 +150,11 @@ end
 # Focus a session: bring its Hyprland window to front, then switch to the
 # correct tab within the terminal emulator (Ghostty or Kitty).
 # Alacritty has no tabs — window focus is sufficient.
-def focus_session(pid, windows)
-  address = find_window_for_pid(pid, windows)
+def focus_session(session, windows)
+  pid = session.pid
+  # Prefer the saved Hyprland address (captured at SessionStart, always correct).
+  # Fall back to process-tree resolution for sessions without a saved address.
+  address = session.terminal&.hypr_address || find_window_for_pid(pid, windows)
   return unless address
 
   system "hyprctl", "dispatch", "focuswindow", "address:#{address}"
@@ -427,11 +430,11 @@ R.run do |tui|
 end
 
 if selected_session && selected_session.pid.to_i > 0
-  session_pid = selected_session.pid
+  session_to_focus = selected_session
   pid = fork do
     Process.setsid # detach from controlling terminal so ghostty window close doesn't SIGHUP us
     sleep 0.15 # let the picker window close before focusing
-    focus_session(session_pid, hyprland_windows)
+    focus_session(session_to_focus, hyprland_windows)
   end
   Process.detach(pid)
 end

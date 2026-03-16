@@ -231,7 +231,7 @@ class PickerApp(Gtk.Application):
         session = self._sessions[self._selected]
         self._close()
         # Small delay: let the window close before focusing the target window.
-        GLib.timeout_add(100, lambda: self._do_focus(session))
+        GLib.timeout_add(150, lambda: self._do_focus(session))
 
     @staticmethod
     def _do_focus(session: dict) -> bool:

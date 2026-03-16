@@ -132,6 +132,12 @@
 - **Closed:** 2026-03-15T18:00:00Z
 - **Description:** Replace the AGS/Astal TypeScript picker with a pure Python GTK4 + gtk4-layer-shell app (no reactive framework). Add status dots with counts to the waybar module text. Phases: (1) colors.py + sessions.py + focus.py, (2) style.css + widgets.py + picker.py, (3) bin/lcctop-pick-gtk + Rakefile + AGS simplification, (4) waybar dot enhancement.
 
+## Feature: Fix lcctop-pick-gtk window focus — wrong window after selection
+- **Status:** closed
+- **Started:** 2026-03-16T03:25:00Z
+- **Closed:** 2026-03-16T03:35:00Z
+- **Description:** lcctop-pick-gtk (PyGTK4 picker) does not focus the correct window after the user selects a Claude session. Investigate focus.py and compare against the working Ruby lcctop-pick focus logic.
+
 ## Feature: Fix global hooks — move from settings.local.json to settings.json
 - **Status:** closed
 - **Started:** 2026-03-16T03:10:00Z

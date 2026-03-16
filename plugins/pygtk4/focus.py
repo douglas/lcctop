@@ -7,6 +7,7 @@ import glob
 import json
 import os
 import subprocess
+import time
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +225,7 @@ def ghostty_tab_switch(term_pid: int, session_pid: int, clients: list[dict]) -> 
     if tab_index == -1 or tab_index > 8:
         return
 
-    subprocess.Popen(["wtype", "-M", "alt", "-k", str(tab_index)])
+    subprocess.run(["wtype", "-M", "alt", "-k", str(tab_index)])
 
 
 # ---------------------------------------------------------------------------
@@ -263,9 +264,12 @@ def focus_session(session: dict) -> None:
 
     address = find_hypr_window_address(pid, clients)
     if address:
-        subprocess.Popen(["hyprctl", "dispatch", "focuswindow", f"address:{address}"])
+        subprocess.run(["hyprctl", "dispatch", "focuswindow", f"address:{address}"])
 
     term_type, term_pid = detect_terminal_type(pid)
+
+    if term_type in ("ghostty", "kitty"):
+        time.sleep(0.05)  # let Hyprland complete the focus before injecting input
 
     if term_type == "ghostty":
         ghostty_tab_switch(term_pid, pid, clients)

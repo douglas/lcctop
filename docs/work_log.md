@@ -133,7 +133,7 @@
 - **Description:** Replace the AGS/Astal TypeScript picker with a pure Python GTK4 + gtk4-layer-shell app (no reactive framework). Add status dots with counts to the waybar module text. Phases: (1) colors.py + sessions.py + focus.py, (2) style.css + widgets.py + picker.py, (3) bin/lcctop-pick-gtk + Rakefile + AGS simplification, (4) waybar dot enhancement.
 
 ## Feature: Fix Waybar Icon Not Updating + Add Colored Dots
-- **Status:** open
+- **Status:** closed
 - **Started:** 2026-03-15T18:00:00Z
-- **Closed:** —
+- **Closed:** 2026-03-15T18:30:00Z
 - **Description:** Fix waybar custom/lcctop module: format was "󰚩{alt}" but WaybarOutput puts content in "text" not "alt", so icon never updated. Also missing "markup": true so Pango spans didn't render. Fix: change format to "{}" and add "markup": true in ~/.config/waybar/config.jsonc.

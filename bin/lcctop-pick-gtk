@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""
+lcctop-pick-gtk — GTK4 layer-shell session picker launcher.
+
+Resolves symlinks so this works when installed to ~/.local/bin/.
+Toggle behavior is handled by GtkApplication single-instance (D-Bus):
+  - If no picker is running: opens the picker window.
+  - If a picker is already running: sends activate signal, which closes it.
+"""
+
+import os
+import sys
+
+# Resolve real location of this script (follow symlinks)
+script_dir = os.path.dirname(os.path.realpath(__file__))
+repo_root  = os.path.dirname(script_dir)
+pkg_dir    = os.path.join(repo_root, "plugins", "pygtk4")
+
+if pkg_dir not in sys.path:
+    sys.path.insert(0, pkg_dir)
+
+from picker import PickerApp
+
+app = PickerApp()
+sys.exit(app.run(sys.argv))

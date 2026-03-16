@@ -60,21 +60,35 @@ module Lcctop
     }.freeze
 
     # Build the Waybar JSON hash from a pre-sorted list of display-adjusted sessions.
-    # text  → plain string so waybar doesn't hide the module
-    # alt   → session count suffix shown via "󰚩{alt}" format in waybar config
-    # class → CSS class for status color (disconnected when no sessions)
+    # text    → Pango-marked-up icon + colored status dots (requires "markup": true in waybar config)
+    # tooltip → full session cards
+    # class   → CSS class for status color (disconnected when no sessions)
     def self.build(sessions)
       if sessions.empty?
-        { "text" => "lcctop", "alt" => "", "tooltip" => "", "class" => "disconnected" }
+        { "text" => ICON, "tooltip" => "", "class" => "disconnected" }
       else
-        n = sessions.size
         {
-          "text"    => "lcctop",
-          "alt"     => n > 1 ? " #{n}" : "",
+          "text"    => format_bar_text(sessions),
           "tooltip" => format_tooltip(sessions),
           "class"   => STATUS_CLASS.fetch(sessions.first.status, "idle"),
         }
       end
+    end
+
+    # Waybar bar text: icon + colored status dots, e.g. "󰚩  ● 1  ● 2"
+    def self.format_bar_text(sessions)
+      perm    = sessions.count { |s| s.status == SessionStatus::WAITING_PERMISSION }
+      attn    = sessions.count { |s| [SessionStatus::WAITING_INPUT, SessionStatus::NEEDS_ATTENTION].include?(s.status) }
+      working = sessions.count { |s| [SessionStatus::WORKING, SessionStatus::COMPACTING].include?(s.status) }
+      idle    = sessions.count { |s| s.status == SessionStatus::IDLE }
+
+      dots = []
+      dots << %(<span color="#f38ba8">● #{perm}</span>)    if perm > 0
+      dots << %(<span color="#f9e2af">● #{attn}</span>)    if attn > 0
+      dots << %(<span color="#a6e3a1">● #{working}</span>) if working > 0
+      dots << %(<span color="#6c7086">● #{idle}</span>)    if idle > 0
+
+      dots.empty? ? ICON : "#{ICON}  #{dots.join("  ")}"
     end
 
     # --- Display adjustments (view-only, session files not modified) ---
@@ -110,11 +124,6 @@ module Lcctop
     end
 
     # --- Formatting ---
-
-    def self.format_text(sessions)
-      n = sessions.size
-      n == 1 ? ICON : "#{ICON} #{n}"
-    end
 
     def self.format_tooltip(sessions)
       header = format_header(sessions)

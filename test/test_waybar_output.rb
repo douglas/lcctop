@@ -31,22 +31,25 @@ class TestWaybarOutput < Minitest::Test
     assert_equal "disconnected", result["class"]
   end
 
-  # --- format_text ---
+  # --- format_bar_text ---
 
-  def test_text_single_session
+  def test_text_single_session_includes_icon_and_dot
     sessions = [build_session(status: SessionStatus::WORKING)]
     result = WaybarOutput.build(sessions)
-    assert_equal "",      result["alt"]
-    refute_empty result["text"]
+    assert_includes result["text"], WaybarOutput::ICON
+    assert_includes result["text"], "●"
+    assert_includes result["text"], "#a6e3a1"  # green for working
+    assert_nil result["alt"]
   end
 
-  def test_text_multiple_sessions
+  def test_text_multiple_sessions_shows_all_groups
     sessions = [
       build_session(status: SessionStatus::WORKING),
       build_session(status: SessionStatus::IDLE),
     ]
     result = WaybarOutput.build(sessions)
-    assert_equal " 2", result["alt"]
+    assert_includes result["text"], "#a6e3a1"  # green for working
+    assert_includes result["text"], "#6c7086"  # gray for idle
   end
 
   # --- class ---

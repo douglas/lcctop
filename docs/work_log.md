@@ -132,11 +132,17 @@
 - **Closed:** 2026-03-15T18:00:00Z
 - **Description:** Replace the AGS/Astal TypeScript picker with a pure Python GTK4 + gtk4-layer-shell app (no reactive framework). Add status dots with counts to the waybar module text. Phases: (1) colors.py + sessions.py + focus.py, (2) style.css + widgets.py + picker.py, (3) bin/lcctop-pick-gtk + Rakefile + AGS simplification, (4) waybar dot enhancement.
 
+## Feature: Fix multi-window focus — save hypr_address at session start
+- **Status:** closed
+- **Started:** 2026-03-16T04:00:00Z
+- **Closed:** 2026-03-16T04:30:00Z
+- **Description:** Both lcctop-pick and lcctop-pick-gtk focused the wrong ghostty window when multiple windows shared one PID with multiple tabs. Root cause: stableId↔starttime index mapping is wrong with >1 tab per window. Fix: capture the Hyprland window address (hyprctl activewindow) at SessionStart hook time and save it in terminal.hypr_address. Both pickers now use the saved address directly, falling back to process-tree resolution for old sessions.
+
 ## Feature: Fix lcctop-pick-gtk window focus — wrong window after selection
 - **Status:** closed
 - **Started:** 2026-03-16T03:25:00Z
 - **Closed:** 2026-03-16T03:35:00Z
-- **Description:** lcctop-pick-gtk (PyGTK4 picker) does not focus the correct window after the user selects a Claude session. Investigate focus.py and compare against the working Ruby lcctop-pick focus logic.
+- **Description:** lcctop-pick-gtk subprocess.Popen was async (wtype fired before focus completed) and GLib.timeout_add after quit() never fired. Fix: subprocess.run + sleep 0.05 + hold/release/teardown_window lifecycle.
 
 ## Feature: Fix global hooks — move from settings.local.json to settings.json
 - **Status:** closed

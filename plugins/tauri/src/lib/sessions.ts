@@ -102,10 +102,11 @@ export function computeRelativeTime(isoString: string): string {
 }
 
 export function computeDisplayFields(session: Session): DisplaySession {
+  const source = (session.source ?? "").toLowerCase();
   return {
     ...session,
     displayName:  session.session_name || session.project_name,
-    sourceLabel:  session.source === "opencode" ? "OC" : "CC",
+    sourceLabel:  source === "opencode" ? "OC" : source === "codex" ? "CX" : "CC",
     statusLabel:  STATUS_LABELS[session.status] ?? session.status,
     statusColor:  STATUS_COLORS[session.status] ?? "#6c7086",
     contextLine:  computeContextLine(session),

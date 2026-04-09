@@ -7,6 +7,22 @@ module Lcctop
 
     ICON = "󰚩"
 
+    DEFAULT_THEME_COLORS = {
+      red:      "#f38ba8",
+      amber:    "#f9e2af",
+      green:    "#a6e3a1",
+      blue:     "#89b4fa",
+      purple:   "#cba6f7",
+      gray:     "#6c7086",
+      subtext:  "#a6adc8",
+      overlay1: "#7f849c",
+      text:     "#cdd6f4",
+      base:     "#1e1e2e",
+      mantle:   "#181825",
+      surface0: "#313244",
+      surface1: "#45475a",
+    }.freeze
+
     STATUS_LABEL = {
       SessionStatus::WAITING_PERMISSION => "Permission",
       SessionStatus::WAITING_INPUT      => "Waiting",
@@ -16,9 +32,29 @@ module Lcctop
       SessionStatus::IDLE               => "Idle",
     }.freeze
 
-    SOURCE_BADGE_COLOR = {
-      "CC" => "#f9e2af",  # amber
-      "OC" => "#89b4fa",  # blue
+    STATUS_COLOR_KEY = {
+      SessionStatus::WAITING_PERMISSION => :red,
+      SessionStatus::WAITING_INPUT      => :amber,
+      SessionStatus::NEEDS_ATTENTION    => :amber,
+      SessionStatus::WORKING            => :green,
+      SessionStatus::COMPACTING         => :blue,
+      SessionStatus::IDLE               => :gray,
+    }.freeze
+
+    SOURCE_BADGE_KEY = {
+      "CC" => :amber,
+      "OC" => :blue,
+      "CX" => :blue,
+    }.freeze
+
+    # Maps session status to waybar CSS class (applied to #custom-lcctop).
+    STATUS_CLASS = {
+      SessionStatus::WAITING_PERMISSION => "permission",
+      SessionStatus::WAITING_INPUT      => "attention",
+      SessionStatus::NEEDS_ATTENTION    => "attention",
+      SessionStatus::WORKING            => "working",
+      SessionStatus::COMPACTING         => "compacting",
+      SessionStatus::IDLE               => "idle",
     }.freeze
 
     # Build Waybar JSON from the current sessions directory.
@@ -39,25 +75,34 @@ module Lcctop
         .then { |sessions| Session.sorted(sessions) }
     end
 
-    # Catppuccin Mocha palette — matches the CSS color variables in lcctop-waybar.css.tpl.
-    STATUS_COLOR = {
-      SessionStatus::WAITING_PERMISSION => "#f38ba8",  # red
-      SessionStatus::WAITING_INPUT      => "#f9e2af",  # amber
-      SessionStatus::NEEDS_ATTENTION    => "#f9e2af",  # amber
-      SessionStatus::WORKING            => "#a6e3a1",  # green
-      SessionStatus::COMPACTING         => "#89b4fa",  # blue
-      SessionStatus::IDLE               => "#6c7086",  # subtext0 (muted)
-    }.freeze
+    def self.theme_colors_file
+      ENV["LCCTOP_THEME_COLORS_FILE"] || File.expand_path("~/.config/omarchy/current/theme/lcctop-pick-colors.json")
+    end
 
-    # Maps session status to waybar CSS class (applied to #custom-lcctop).
-    STATUS_CLASS = {
-      SessionStatus::WAITING_PERMISSION => "permission",
-      SessionStatus::WAITING_INPUT      => "attention",
-      SessionStatus::NEEDS_ATTENTION    => "attention",
-      SessionStatus::WORKING            => "working",
-      SessionStatus::COMPACTING         => "compacting",
-      SessionStatus::IDLE               => "idle",
-    }.freeze
+    def self.theme_colors
+      raw = JSON.parse(File.read(theme_colors_file), symbolize_names: true)
+      DEFAULT_THEME_COLORS.merge(raw)
+    rescue StandardError
+      DEFAULT_THEME_COLORS
+    end
+    private_class_method :theme_colors
+
+    def self.resolve_color(key, colors = theme_colors)
+      colors.fetch(key, DEFAULT_THEME_COLORS.fetch(key))
+    end
+    private_class_method :resolve_color
+
+    def self.status_color(status, colors = theme_colors)
+      key = STATUS_COLOR_KEY.fetch(status, :gray)
+      resolve_color(key, colors)
+    end
+    private_class_method :status_color
+
+    def self.source_badge_color(source_label, colors = theme_colors)
+      key = SOURCE_BADGE_KEY.fetch(source_label, :amber)
+      resolve_color(key, colors)
+    end
+    private_class_method :source_badge_color
 
     # Build the Waybar JSON hash from a pre-sorted list of display-adjusted sessions.
     # text    → Pango-marked-up icon + colored status dots (requires "markup": true in waybar config)
@@ -77,16 +122,17 @@ module Lcctop
 
     # Waybar bar text: icon + colored status dots, e.g. "󰚩  ● 1  ● 2"
     def self.format_bar_text(sessions)
+      colors  = theme_colors
       perm    = sessions.count { |s| s.status == SessionStatus::WAITING_PERMISSION }
       attn    = sessions.count { |s| [SessionStatus::WAITING_INPUT, SessionStatus::NEEDS_ATTENTION].include?(s.status) }
       working = sessions.count { |s| [SessionStatus::WORKING, SessionStatus::COMPACTING].include?(s.status) }
       idle    = sessions.count { |s| s.status == SessionStatus::IDLE }
 
       dots = []
-      dots << %(<span color="#f38ba8">● #{perm}</span>)    if perm > 0
-      dots << %(<span color="#f9e2af">● #{attn}</span>)    if attn > 0
-      dots << %(<span color="#a6e3a1">● #{working}</span>) if working > 0
-      dots << %(<span color="#6c7086">● #{idle}</span>)    if idle > 0
+      dots << %(<span color="#{resolve_color(:red, colors)}">● #{perm}</span>)      if perm > 0
+      dots << %(<span color="#{resolve_color(:amber, colors)}">● #{attn}</span>)    if attn > 0
+      dots << %(<span color="#{resolve_color(:green, colors)}">● #{working}</span>) if working > 0
+      dots << %(<span color="#{resolve_color(:gray, colors)}">● #{idle}</span>)     if idle > 0
 
       dots.empty? ? ICON : "#{ICON}  #{dots.join("  ")}"
     end
@@ -126,24 +172,26 @@ module Lcctop
     # --- Formatting ---
 
     def self.format_tooltip(sessions)
-      header = format_header(sessions)
-      cards  = sessions.map { |s| session_tooltip_lines(s) }.join("\n<span color=\"#313244\">────────────────────</span>\n")
-      header.empty? ? cards : "#{header}\n<span color=\"#313244\">────────────────────</span>\n#{cards}"
+      colors = theme_colors
+      divider = %(<span color="#{resolve_color(:surface0, colors)}">────────────────────</span>)
+      header = format_header(sessions, colors)
+      cards  = sessions.map { |s| session_tooltip_lines(s, colors) }.join("\n#{divider}\n")
+      header.empty? ? cards : "#{header}\n#{divider}\n#{cards}"
     end
 
     # Header bar showing colored dot counts per status group, e.g.:
     #   cctop    ● 1  ● 2  ● 1
-    def self.format_header(sessions)
+    def self.format_header(sessions, colors = theme_colors)
       perm    = sessions.count { |s| s.status == SessionStatus::WAITING_PERMISSION }
       attn    = sessions.count { |s| [SessionStatus::WAITING_INPUT, SessionStatus::NEEDS_ATTENTION].include?(s.status) }
       working = sessions.count { |s| [SessionStatus::WORKING, SessionStatus::COMPACTING].include?(s.status) }
       idle    = sessions.count { |s| s.status == SessionStatus::IDLE }
 
       dots = []
-      dots << %(<span color="#f38ba8">● #{perm}</span>)    if perm > 0
-      dots << %(<span color="#f9e2af">● #{attn}</span>)    if attn > 0
-      dots << %(<span color="#a6e3a1">● #{working}</span>) if working > 0
-      dots << %(<span color="#6c7086">● #{idle}</span>)    if idle > 0
+      dots << %(<span color="#{resolve_color(:red, colors)}">● #{perm}</span>)      if perm > 0
+      dots << %(<span color="#{resolve_color(:amber, colors)}">● #{attn}</span>)    if attn > 0
+      dots << %(<span color="#{resolve_color(:green, colors)}">● #{working}</span>) if working > 0
+      dots << %(<span color="#{resolve_color(:gray, colors)}">● #{idle}</span>)     if idle > 0
 
       return "" if dots.empty?
       "<b>cctop</b>    #{dots.join("  ")}"
@@ -154,15 +202,15 @@ module Lcctop
     #   ▍ project-name  [N agents]  CC/OC    Status
     #     branch / context line                         just now
     #
-    def self.session_tooltip_lines(session)
+    def self.session_tooltip_lines(session, colors = theme_colors)
       label  = STATUS_LABEL.fetch(session.status, session.status.capitalize)
-      color  = STATUS_COLOR.fetch(session.status, "#6c7086")
+      color  = status_color(session.status, colors)
       border = %(<span color="#{color}">▍</span>)
 
-      src_color = SOURCE_BADGE_COLOR.fetch(session.source_label, "#f9e2af")
+      src_color = source_badge_color(session.source_label, colors)
       source    = %(<span color="#{src_color}">#{h session.source_label}</span>)
       agents    = session.subagent_count > 0 ?
-        %(  <span color="#cba6f7">[#{session.subagent_count} agents]</span>) : ""
+        %(  <span color="#{resolve_color(:purple, colors)}">[#{session.subagent_count} agents]</span>) : ""
 
       name_part   = %(<b>#{h session.display_name}</b>#{agents}  #{source})
       status_part = %(<span color="#{color}">#{label}</span>)
@@ -170,8 +218,9 @@ module Lcctop
 
       branch_ctx  = h(session.branch)
       branch_ctx += "  /  #{h session.context_line}" if session.context_line
-      time_part   = %(<span color="#6c7086">#{h session.relative_time}</span>)
-      line2       = %(  <span color="#6c7086">#{branch_ctx}</span>    #{time_part})
+      gray        = resolve_color(:gray, colors)
+      time_part   = %(<span color="#{gray}">#{h session.relative_time}</span>)
+      line2       = %(  <span color="#{gray}">#{branch_ctx}</span>    #{time_part})
 
       "#{line1}\n#{line2}"
     end

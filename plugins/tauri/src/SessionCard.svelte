@@ -9,7 +9,7 @@
   let { session, selected }: Props = $props();
 
   const sourceBadgeColor = $derived(
-    session.sourceLabel === "OC" ? "#89b4fa" : "#f9e2af"
+    session.sourceLabel === "OC" || session.sourceLabel === "CX" ? "#89b4fa" : "#f9e2af"
   );
 
   const subagentColor = "#cba6f7";

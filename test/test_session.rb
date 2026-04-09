@@ -142,6 +142,11 @@ class TestSession < Minitest::Test
     assert_equal "abc123",    session.session_id  # original unchanged
   end
 
+  def test_source_label_for_codex
+    session = build_session(source: "codex")
+    assert_equal "CX", session.source_label
+  end
+
   # --- Terminal info round-trip ---
 
   def test_terminal_info_serializes_in_session

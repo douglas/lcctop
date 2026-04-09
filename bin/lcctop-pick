@@ -241,7 +241,7 @@ def make_line1(session, width, selected)
   color   = STATUS_COLOR.fetch(status, C[:gray])
   label   = STATUS_LABEL.fetch(status, "Idle")
   src     = session.source_label
-  src_clr = src == "OC" ? C[:blue] : C[:amber]
+  src_clr = %w[OC CX].include?(src) ? C[:blue] : C[:amber]
   name    = truncate(session.display_name, 24)
   time    = session.relative_time
   bg      = selected ? C[:surface0] : nil

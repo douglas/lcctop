@@ -12,10 +12,10 @@ end
 
 task default: :test
 
-desc "Symlink bin/lcctop-hook and bin/lcctop-waybar into ~/.local/bin/"
+desc "Symlink lcctop binaries into ~/.local/bin/"
 task :install do
   FileUtils.mkdir_p(LOCAL_BIN)
-  %w[lcctop-hook lcctop-waybar lcctop-focus lcctop-pick lcctop-pick-gtk].each do |bin|
+  %w[lcctop-hook lcctop-waybar lcctop-focus lcctop-pick lcctop-pick-gtk lcctop-codex].each do |bin|
     src  = File.expand_path("bin/#{bin}", __dir__)
     dest = File.join(LOCAL_BIN, bin)
     next unless File.exist?(src)
@@ -138,6 +138,30 @@ task :install_opencode do
   puts
   puts "To activate, add the following to your opencode.json plugin array:"
   puts %|  "file://~/.config/opencode/plugins/cctop.js"|
+end
+
+desc "Install Codex watcher and enable the user service"
+task :install_codex do
+  Rake::Task[:install].invoke
+
+  systemd_dir = File.expand_path("~/.config/systemd/user")
+  src  = File.expand_path("systemd/lcctop-codex.service", __dir__)
+  dest = File.join(systemd_dir, "lcctop-codex.service")
+
+  FileUtils.mkdir_p(systemd_dir)
+  FileUtils.cp(src, dest)
+  puts "Installed #{dest}"
+
+  daemon_reloaded = system("systemctl", "--user", "daemon-reload")
+  service_started = system("systemctl", "--user", "enable", "--now", "lcctop-codex.service")
+
+  if daemon_reloaded && service_started
+    puts "Enabled lcctop-codex.service"
+  else
+    puts "Could not enable the user service automatically."
+    puts "Run: systemctl --user daemon-reload"
+    puts "Run: systemctl --user enable --now lcctop-codex.service"
+  end
 end
 
 desc "Copy AGS picker + bar widget to ~/.config/ags/lcctop/"

@@ -1,4 +1,5 @@
 require_relative "test_helper"
+require "json"
 
 class TestWaybarOutput < Minitest::Test
   include Lcctop
@@ -221,6 +222,33 @@ class TestWaybarOutput < Minitest::Test
     session = build_session(status: SessionStatus::IDLE)
     assert_includes WaybarOutput.session_tooltip_lines(session), "#f9e2af"
     assert_includes WaybarOutput.session_tooltip_lines(session), "CC"
+  end
+
+  def test_session_tooltip_lines_cx_badge_blue
+    session = build_session(status: SessionStatus::IDLE)
+    session.source = "codex"
+    assert_includes WaybarOutput.session_tooltip_lines(session), "#89b4fa"
+    assert_includes WaybarOutput.session_tooltip_lines(session), "CX"
+  end
+
+  def test_session_tooltip_lines_uses_omarchy_theme_colors_when_available
+    session = build_session(status: SessionStatus::IDLE)
+    session.source = "codex"
+
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "lcctop-pick-colors.json")
+      File.write(path, JSON.generate({ blue: "#1122ff", gray: "#445566" }))
+
+      old = ENV["LCCTOP_THEME_COLORS_FILE"]
+      ENV["LCCTOP_THEME_COLORS_FILE"] = path
+      begin
+        lines = WaybarOutput.session_tooltip_lines(session)
+        assert_includes lines, "#1122ff"
+        assert_includes lines, "#445566"
+      ensure
+        ENV["LCCTOP_THEME_COLORS_FILE"] = old
+      end
+    end
   end
 
   def test_session_tooltip_lines_time_on_second_line

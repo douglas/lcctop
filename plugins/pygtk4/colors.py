@@ -58,6 +58,7 @@ STATUS_PRIORITY: dict[str, int] = {
 SOURCE_BADGE_KEY: dict[str, str] = {
     "CC": "amber",
     "OC": "blue",
+    "CX": "blue",
 }
 
 

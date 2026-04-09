@@ -1,12 +1,13 @@
 # lcctop
 
-A Linux port of [cctop](https://github.com/steipete/cctop) — monitors Claude Code sessions for Waybar/Hyprland.
+A Linux port of [cctop](https://github.com/steipete/cctop) — monitors Claude Code, Codex, and opencode sessions for Waybar/Hyprland.
 
-Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` (same format as macOS cctop), then surfaces status in a Waybar custom module.
+Uses Claude Code hooks, a Codex watcher, and an opencode plugin to track session state in `~/.cctop/sessions/{pid}.json` (same format as macOS cctop), then surfaces status in a Waybar custom module.
 
 ## Components
 
 - **`lcctop-hook`** — receives Claude Code hook events via stdin, writes session JSON files
+- **`lcctop-codex`** — watches `~/.codex/sessions/**/*.jsonl`, mirrors active Codex sessions into lcctop session files
 - **`lcctop-waybar`** — watches session files, outputs Waybar-compatible JSON continuously
 - **`lcctop-pick`** — ratatui_ruby TUI session picker: j/k navigate, Enter focuses window, Esc/q cancel; uses saved `hypr_address` for reliable focus (falls back to process-tree correlation)
 - **`lcctop-pick-gtk`** — PyGTK4 layer-shell session picker: D-Bus singleton toggle, auto-refresh via inotify, theme-aware colors from Omarchy
@@ -16,6 +17,7 @@ Uses Claude Code hooks to track session state in `~/.cctop/sessions/{pid}.json` 
 ```sh
 rake install          # symlinks bin/ into ~/.local/bin/
 rake install_plugin   # symlinks plugin + registers hooks in ~/.claude/settings.json
+rake install_codex    # installs/enables the Codex watcher user service
 rake install_theme    # copies CSS template + generates current theme CSS
 rake install_opencode # copies opencode plugin.js to ~/.config/opencode/plugins/cctop.js
 rake install_ags      # copies AGS picker + bar widget to ~/.config/ags/lcctop/
@@ -125,7 +127,7 @@ cctop    ● 1  ● 2  ● 1          ← colored dots: red=permission, amber=at
   feature-branch / Running: npm test          5m ago
 ```
 
-Source badge colors: **CC** = amber (`#f9e2af`), **OC** = blue (`#89b4fa`)
+Source badge colors: **CC** = amber (`#f9e2af`), **CX** = blue (`#89b4fa`), **OC** = blue (`#89b4fa`)
 
 ### Waybar output format
 
@@ -234,6 +236,19 @@ Opencode sessions appear in the Waybar tooltip with an **OC** badge (blue). The 
 are written to `~/.cctop/sessions/{pid}.json` with `"source": "opencode"`, fully compatible
 with the cctop format.
 
+## Codex Support
+
+lcctop can also track local Codex CLI sessions by watching the session JSONL logs under
+`~/.codex/sessions/` and mirroring active sessions into `~/.cctop/sessions/`.
+
+```sh
+rake install_codex
+```
+
+That installs `lcctop-codex`, copies a user `systemd` service, and tries to enable it.
+Codex sessions appear with a **CX** badge (blue), using the same Omarchy-driven theme palette
+as the rest of lcctop.
+
 ## Tauri Panel (Prototype)
 
 `plugins/tauri/` is a floating web-UI session picker built with
@@ -306,7 +321,7 @@ bind = SUPER, grave, exec, lcctop-panel
 - 420×500 px transparent borderless window
 - Per-session left accent bar colored by status
 - Header shows colored dot counts per status tier
-- Source badge: **CC** (amber) = Claude Code, **OC** (blue) = opencode
+- Source badge: **CC** (amber) = Claude Code, **CX** (blue) = Codex, **OC** (blue) = opencode
 - Auto-refreshes via `notify`-based file watcher on `~/.cctop/sessions/`
 
 ## Linux-Specific Implementation

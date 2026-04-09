@@ -64,7 +64,8 @@ function buildContextLine(s: RawSession): string | null {
 
 function enrichSession(raw: RawSession): Session {
     const status = raw.status as SessionStatus
-    const sourceLabel = (raw.source ?? "").toLowerCase() === "opencode" ? "OC" : "CC"
+    const source = (raw.source ?? "").toLowerCase()
+    const sourceLabel = source === "opencode" ? "OC" : source === "codex" ? "CX" : "CC"
     return {
         ...raw,
         displayName: raw.session_name ?? raw.project_name,

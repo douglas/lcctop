@@ -20,8 +20,9 @@ interface SessionCardProps {
 export default function SessionCard({ session, selected, onActivate }: SessionCardProps) {
   const s = session;
 
-  // Source badge color: CC = amber, OC = blue — text only, no background
-  const sourceBadgeColor = s.sourceLabel === "OC" ? "#89b4fa" : "#f9e2af";
+  // Source badge color: CC = amber, OC/CX = blue — text only, no background
+  const sourceBadgeColor =
+    s.sourceLabel === "OC" || s.sourceLabel === "CX" ? "#89b4fa" : "#f9e2af";
 
   // Subagent label (purple) — no brackets, matches cctop screenshot
   const agentLabel =

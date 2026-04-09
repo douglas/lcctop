@@ -140,7 +140,7 @@ def build_context_line(s: dict) -> str | None:
 def enrich_session(raw: dict, colors: dict) -> dict:
     status       = raw.get("status", "idle")
     source       = (raw.get("source") or "").lower()
-    source_label = "OC" if source == "opencode" else "CC"
+    source_label = "OC" if source == "opencode" else "CX" if source == "codex" else "CC"
 
     color_key    = STATUS_COLORS.get(status, "gray")
     status_color = resolve(colors, color_key)

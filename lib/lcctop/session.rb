@@ -174,7 +174,11 @@ module Lcctop
     end
 
     def source_label
-      source == "opencode" ? "OC" : "CC"
+      case source
+      when "opencode" then "OC"
+      when "codex"    then "CX"
+      else                 "CC"
+      end
     end
 
     def subagent_count
